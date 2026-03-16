@@ -18,10 +18,14 @@ import copy
 import time
 import numpy as np
 import pandas as pd
+import torch
+import os
 # import tensorflow as tf
 from new_calculate import *
 # from Agent.DDPG import DDPG
 from Agent.TD3 import TD3
+from real_System_remake.pretrain_real_gail import RealActor, normalize, RunningMeanStd
+
 # from Agent.TD3_attention import TD3 as TD3_attn  # 如果要使用其他的算法，在import中改掉即可
 # from Agent.TD3withoutNoise import TD3
 warnings.filterwarnings('ignore')
@@ -35,41 +39,70 @@ model_filename = ex_path + 'model'
 clustered_devices = None
 
 
-
-
-
 class enterprise_nnu:
     def __init__(self, config: Config):
         self.scope = config.scope
-        self.enterprise = TD3(config=config)  # 生成num个mod
+        self.enterprise = TD3(config=config)
         self.epi = None
-        self.last_state = None  # 银行家i的银行的上一个state
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def run_enterprise(self, state, new_ep):  # enterprise_mod范围:[1, num]
-        # =====准备工作=====#
-        if new_ep:
-            h_epi = None  # 准备h_epi，得要掌握了经验池才能理解，相当与是在记录现在是第几个回合，到时候采样的时候会一起存进去
-        else:
-            h_epi = self.epi
-        state = np.array(state)  # state准备就绪
+        # 仅针对 production1 进行特殊初始化
+        if self.scope == 'production1':
+            print(f"=== 🤖 {self.scope} 正在加载 GAIL 决策引擎及标准化参数 ===")
 
-        # =====得到action=====#
+            # 1. 初始化模型
+            self.gail_actor = RealActor(s_dim=33, a_dim=4, a_bound=0.5).to(self.device)
+
+            # 2. 加载模型权重
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            actor_path = os.path.join(current_dir, 'pretrained_actor.pth')
+
+            if os.path.exists(actor_path):
+                self.gail_actor.load_state_dict(torch.load(actor_path, map_location=self.device))
+                self.gail_actor.eval()
+                print(f"✅ 权重加载成功")
+
+                # 3. 从文件读取预训练时的标准化参数
+                rms_path = os.path.join(current_dir, 'obs_rms_params.pth')
+
+                if os.path.exists(rms_path):
+                    rms_params = torch.load(rms_path, map_location=self.device)
+                    self.obs_mean = rms_params['mean'].to(self.device)
+                    self.obs_var = rms_params['var'].to(self.device)
+                    print(f"✅ {self.scope} 状态标准化参数(RMS)加载成功")
+                else:
+                    # 备用方案：如果文件不存在，抛出异常或使用默认值（不推荐）
+                    print(f"⚠️ 警告: 未找到 {rms_path}，production1 的 GAIL 表现将受严重影响")
+                    self.obs_mean = torch.zeros(33).to(self.device)
+                    self.obs_var = torch.ones(33).to(self.device)
+
+    def run_enterprise(self, state, new_ep):
+        # 如果是 production1 且加载成功了预训练模型
+        if self.scope == 'production1' and hasattr(self, 'gail_actor'):
+            state_tensor = torch.FloatTensor(np.array(state)).unsqueeze(0)
+            with torch.no_grad():
+                # 直接通过预训练生成器得出动作
+                action = self.gail_actor(state_tensor).detach().cpu().numpy().flatten()
+            return action
+
+        # 否则（如 consumption1），逻辑照旧走 TD3 的探索/决策逻辑
+        state = np.array(state)
+        h_epi = None if new_ep else self.epi
         h_epi, action = self.enterprise.choose_action(h_epi, state)
         if new_ep:
             self.epi = copy.deepcopy(h_epi)
-
         return action
 
+    def env_upd(self, state, action, state_, reward, is_train, is_end=False):
+        # 如果是 production1，我们只记录数据但不让它更新模型（取决于你的需求）
+        if self.scope == 'production1':
+            # 如果你依然想把数据存入经验池以备后用，保留下面这行，但去掉 learn()
+            # self.epi = self.enterprise.episode_feedback(...)
+            return None  # 不调用 self.enterprise.learn()
 
-    def env_upd(self, state, action, state_, reward, is_train, is_end=False):  # 这里的h_epi是upd_epi
-        # =====准备工作=====#
-        state_ = np.array(state_)  # state准备就绪
-        self.last_state = state_
-        # print(self.scope, ":", self.epi)
-        # =====把[state, action, reward, next_state]按序存入h_epi所属部分, 更新epi_map=====#
-
+        # 其他智能体逻辑照旧
         if is_train:
-
+            state_ = np.array(state_)
             self.epi = self.enterprise.episode_feedback(self.epi, state, action, reward, state_ if is_end else None)
             loss = self.enterprise.learn()
             return loss
