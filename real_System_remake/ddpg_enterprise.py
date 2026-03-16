@@ -66,7 +66,9 @@ class enterprise_nnu:
                 rms_path = os.path.join(current_dir, 'obs_rms_params.pth')
 
                 if os.path.exists(rms_path):
+                    # 显式指定 map_location 为当前 device
                     rms_params = torch.load(rms_path, map_location=self.device)
+                    # 确保 tensor 本身也移动过去
                     self.obs_mean = rms_params['mean'].to(self.device)
                     self.obs_var = rms_params['var'].to(self.device)
                     print(f"✅ {self.scope} 状态标准化参数(RMS)加载成功")
@@ -77,12 +79,17 @@ class enterprise_nnu:
                     self.obs_var = torch.ones(33).to(self.device)
 
     def run_enterprise(self, state, new_ep):
-        # 如果是 production1 且加载成功了预训练模型
         if self.scope == 'production1' and hasattr(self, 'gail_actor'):
-            state_tensor = torch.FloatTensor(np.array(state)).unsqueeze(0)
+            # 关键修改：在创建时直接指定 .to(self.device)
+            state_tensor = torch.FloatTensor(np.array(state)).to(self.device).unsqueeze(0)
+
             with torch.no_grad():
-                # 直接通过预训练生成器得出动作
-                action = self.gail_actor(state_tensor).detach().cpu().numpy().flatten()
+                # 标准化计算，此时 state_tensor, obs_mean, obs_var 都在同一设备上
+                norm_state = (state_tensor - self.obs_mean) / torch.sqrt(self.obs_var + 1e-8)
+                norm_state = torch.clamp(norm_state, -5.0, 5.0)
+
+                # 模型 forward
+                action = self.gail_actor(norm_state).detach().cpu().numpy().flatten()
             return action
 
         # 否则（如 consumption1），逻辑照旧走 TD3 的探索/决策逻辑
