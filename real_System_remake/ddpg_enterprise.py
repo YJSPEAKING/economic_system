@@ -148,7 +148,7 @@ class enterprise_nnu:
                 s_next_t = torch.as_tensor(state_, dtype=torch.float32, device=self.device)
                 s_next_n = torch.clamp((s_next_t - self.obs_mean) / torch.sqrt(self.obs_var + 1e-8), -5.0, 5.0)
 
-                # 2. 动作标准化 【修复 R_int 为 0 的关键】
+                # 2. 动作标准化
                 a_t = torch.as_tensor(action, dtype=torch.float32, device=self.device)
                 a_n = (a_t - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
@@ -158,11 +158,11 @@ class enterprise_nnu:
                 r_int = -torch.log(1 - score + 1e-8).item()
 
                 # 可以在此处通过参数接收 w_gail
-                w_gail = 0.5
+                w_gail = 1
                 final_reward = reward + w_gail * r_int
                 self.last_internal_reward = r_int
 
-            # 【修复 RL 崩盘的关键】：必须把标准化后的状态存入经验池！
+            # 必须把标准化后的状态存入经验池！
             s_to_store = s_n.cpu().numpy()
             s_next_to_store = s_next_n.cpu().numpy()
 
