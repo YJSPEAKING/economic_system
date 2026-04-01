@@ -1,3 +1,9 @@
+import os
+import sys
+import io
+
+os.environ["PYTHONUTF8"] = "1"
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 from real_System_remake.Environment import Environment
 from real_System_remake.Enterprise_config import Enterprise_config
 from real_System_remake.Bank_config import Bank_config
@@ -226,6 +232,12 @@ class System:
                     wandb.log({'critic_loss/production1': critic_production1})
                     wandb.log({'critic_loss/consumption1': crtic_cumsuption1})
                     wandb.log({'探索噪声var': var})
+                    if 'production1' in self.Agent:
+                        # 记录内部奖励，观察它是否依然保持“专家风范”
+                        wandb.log({'GAIL_Internal_Reward/pro1': self.Agent['production1'].last_r_int})
+                        # 记录此时的综合 Loss
+                        _, c_loss, a_loss = self.Agent['production1'].log()
+                        wandb.log({'Actor_Loss/pro1': a_loss})
 
                     # for target_key in self.e_execute:
                     #     wandb.log({'action_'+target_key: reward_pro[target_key]})

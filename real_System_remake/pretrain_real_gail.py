@@ -255,7 +255,9 @@ def pretrain_gail():
     # 保存标准化统计量 (生产环境决策必须用到)
     torch.save({
         'mean': obs_rms.mean.cpu(),
-        'var': obs_rms.var.cpu()
+        'var': obs_rms.var.cpu(),
+        'act_mean': act_rms.mean.cpu(),  # 必须保存！
+        'act_var': act_rms.var.cpu()  # 必须保存！
     }, rms_save_path)
 
     print(f"\n💾 所有文件已保存：")
