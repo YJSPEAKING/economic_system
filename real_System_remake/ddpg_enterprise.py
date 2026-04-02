@@ -158,7 +158,7 @@ class enterprise_nnu:
                 r_int = -torch.log(1 - score + 1e-8).item()
 
                 # 可以在此处通过参数接收 w_gail
-                w_gail = 1
+                w_gail = 0.65
                 final_reward = reward + w_gail * r_int
                 self.last_internal_reward = r_int
 
