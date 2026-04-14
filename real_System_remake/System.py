@@ -222,27 +222,32 @@ class System:
                                                            )
 
                 if use_wandb:
-                    var, critic_bank, actor_bank = self.Agent['bank1'].log()
-                    _, critic_production1, actor_production1 = self.Agent['production1'].log()
-                    _, crtic_cumsuption1, actor_consumption1 = self.Agent['consumption1'].log()
+                    # 现在的 log() 统一返回 4 个值，如果是其他没有判别器的智能体，第4个值默认是 0.0
+                    # 我们用 _ 来占位接收不需要的内部奖励
+                    var, critic_bank, actor_bank, _ = self.Agent['bank1'].log()
+                    _, critic_production1, actor_production1, int_r_pro1 = self.Agent['production1'].log()
+                    _, crtic_consumption1, actor_consumption1, _ = self.Agent['consumption1'].log()
+
+                    # 记录 Actor Loss
                     wandb.log({'actor_loss/bank1': actor_bank})
                     wandb.log({'actor_loss/production1': actor_production1})
                     wandb.log({'actor_loss/consumption1': actor_consumption1})
-                    wandb.log({'critic_loss/bank': critic_bank})
+
+                    # 记录 Critic Loss
+                    wandb.log({'critic_loss/bank1': critic_bank})
                     wandb.log({'critic_loss/production1': critic_production1})
-                    wandb.log({'critic_loss/consumption1': crtic_cumsuption1})
+                    wandb.log({'critic_loss/consumption1': crtic_consumption1})
+
+                    # 记录探索噪声
                     wandb.log({'探索噪声var': var})
-                    if 'production1' in self.Agent:
-                        # 记录内部奖励，观察它是否依然保持“专家风范”
-                        wandb.log({'GAIL_Internal_Reward/pro1': self.Agent['production1'].last_r_int})
-                        # 记录此时的综合 Loss
-                        _, c_loss, a_loss = self.Agent['production1'].log()
-                        wandb.log({'Actor_Loss/pro1': a_loss})
+
+                    # 专门记录 production1 的内部奖励
+                    wandb.log({'GAIL_Internal_Reward/pro1': int_r_pro1})
 
                     # for target_key in self.e_execute:
                     #     wandb.log({'action_'+target_key: reward_pro[target_key]})
                     # for target_key in self.b_execute:
-                    # wandb.log({'action_' + target_key: reward_pro[target_key]})
+                    #     wandb.log({'action_' + target_key: reward_pro[target_key]})
 
                 # for target_key in self.e_execute:
                 #     print('after_'+target_key+'ra_action', reward_pro[target_key])

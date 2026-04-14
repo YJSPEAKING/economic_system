@@ -80,37 +80,58 @@ class enterprise_nnu:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         if self.scope == 'production1':
-            print(f"=== 🤖 {self.scope} 切换至进化型 GAIL-AC 模式 ===")
+            print(f"=== 🚀 {self.scope} 启动端到端联合训练 (DARL) 模式 ===")
             current_dir = os.path.dirname(os.path.abspath(__file__))
 
-            # 【A. 权重注入】将预训练权重同步给 TD3 的 Actor，实现热启动
-            actor_path = os.path.join(current_dir, 'pretrained_actor.pth')
-            if os.path.exists(actor_path):
-                pretrained_dict = torch.load(actor_path, map_location=self.device)
-                self.enterprise.actor.load_state_dict(pretrained_dict)
-                self.enterprise.actor_target.load_state_dict(pretrained_dict)
-                print(f"✅ TD3 Actor 已继承专家经验，不再是随机初始化")
+            # 保留这句提示，代表它是随机初始化的
+            print(f"🌱 TD3 Actor 将从零开始与环境及判别器进行对抗训练")
 
-            # 【B. 导师加载】加载预训练判别器作为奖励引擎
-            self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4).to(self.device)
-            disc_path = os.path.join(current_dir, 'pretrained_discriminator.pth')
-            if os.path.exists(disc_path):
-                self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device))
-                self.gail_disc.eval()  # 判别器只看不练
-                for param in self.gail_disc.parameters():
-                    param.requires_grad = False
-                print(f"✅ 判别器已挂载，将实时评估动作逻辑")
-
-            # 读取静态标准化参数
+            # 2. 读取静态标准化参数 (保持原样)
             rms_path = os.path.join(current_dir, 'obs_rms_params.pth')
             rms_params = torch.load(rms_path, map_location=self.device)
             self.obs_mean = rms_params['mean'].to(self.device)
             self.obs_var = rms_params['var'].to(self.device)
-            # 【新增】加载动作的标准化参数
             self.act_mean = rms_params['act_mean'].to(self.device)
             self.act_var = rms_params['act_var'].to(self.device)
 
-            self.last_r_int = 0.0  # 用于日志
+            # 3. 【阶段一：加载】建立在线专家记忆库 (Expert Buffer)
+            csv_path = os.path.join(current_dir, 'expert_data_production1_cleaned.csv')
+            if os.path.exists(csv_path):
+                df = pd.read_csv(csv_path, header=None)
+                expert_data = torch.FloatTensor(df.values).to(self.device)
+                # 切分状态与动作 (前33是状态，后4是动作)
+                self.expert_states = expert_data[:, :33]
+                self.expert_actions = expert_data[:, 33:37]
+                self.expert_size = len(self.expert_states)
+                print(f"✅ 专家记忆库已挂载！共包含 {self.expert_size} 条记录。")
+            else:
+                raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
+
+            # 4. 【阶段二：唤醒】加载判别器并解冻
+            self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4).to(self.device)
+            disc_path = os.path.join(current_dir, 'pretrained_discriminator.pth')
+            if os.path.exists(disc_path):
+                self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device))
+
+            # 【核心改变】：解冻判别器，开启训练模式
+            self.gail_disc.train()
+            for param in self.gail_disc.parameters():
+                param.requires_grad = True
+
+            # 为判别器装配独立的优化器
+            self.disc_optimizer = torch.optim.Adam(self.gail_disc.parameters(), lr=3e-4)
+            print(f"🔥 判别器已解冻并装配优化器，准备在线对抗！")
+
+            # 统一命名为 last_internal_reward
+            self.last_internal_reward = 0.0
+
+    def sample_expert(self, batch_size):
+        """从专家库中随机抽取一批真数据"""
+        if getattr(self, 'expert_size', 0) == 0:
+            return None, None
+        # 随机生成 batch_size 个索引
+        indices = torch.randint(0, self.expert_size, (batch_size,), device=self.device)
+        return self.expert_states[indices], self.expert_actions[indices]
 
     def run_enterprise(self, state, new_ep):
         if self.scope == 'production1':
@@ -182,7 +203,9 @@ class enterprise_nnu:
     def log(self):
         var = self.enterprise.get_var()
         critic_loss , actor_loss = self.enterprise.get_loss()
-        return var,critic_loss,actor_loss
+        # 安全获取内部奖励，如果不是 production1 则返回 0.0
+        internal_reward = getattr(self, 'last_internal_reward', 0.0)
+        return var, critic_loss, actor_loss, internal_reward
 
     def get_show(self):
         return self.enterprise.check_show()
