@@ -125,6 +125,16 @@ class enterprise_nnu:
             # 统一命名为 last_internal_reward
             self.last_internal_reward = 0.0
 
+            # 将这些模块的“遥控器”交给 TD3 实例，供底层 learn() 函数使用
+            self.enterprise.gail_disc = self.gail_disc
+            self.enterprise.disc_optimizer = self.disc_optimizer
+            self.enterprise.sample_expert = self.sample_expert
+            # 把标准化参数也传进去，底层算 Loss 时需要用到
+            self.enterprise.obs_mean = self.obs_mean
+            self.enterprise.obs_var = self.obs_var
+            self.enterprise.act_mean = self.act_mean
+            self.enterprise.act_var = self.act_var
+
     def sample_expert(self, batch_size):
         """从专家库中随机抽取一批真数据"""
         if getattr(self, 'expert_size', 0) == 0:
