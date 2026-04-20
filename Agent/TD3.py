@@ -242,12 +242,14 @@ class TD3(object):
         b_s = b_s_rm.reshape(-1, self.s_dim)
 
         # 根据网络设定获取当前状态b_s，动作b_a，奖励b_r，下一个状态b_s_的数据，进行数据处理
-        # b_a = b_M[1].reshape(-1,action_dim)/10000-2.
         b_a = np.array(b_M[1]).reshape(-1, self.a_dim)
         b_r = b_M[2].reshape(-1, 1)
-        #3.24
-        b_s_ = torch.as_tensor(b_s__rm.reshape(-1, self.s_dim), dtype=torch.float32, device=device)
-        # b_s_ = b_s__rm.reshape(-1, self.s_dim)
+
+        # 🛡️ 强行转换为 Tensor 并切断一切图联系 (物理隔离)
+        b_s_tensor = torch.as_tensor(b_s, dtype=torch.float32, device=device).detach()
+        b_a_tensor = torch.as_tensor(b_a, dtype=torch.float32, device=device)
+        b_s_ = torch.as_tensor(b_s__rm.reshape(-1, self.s_dim), dtype=torch.float32, device=device).detach()
+        b_r_tensor = torch.as_tensor(b_r, dtype=torch.float32, device=device).detach()
 
 
         # 根据当前训练步数（pointer）计算Critic和Actor网络的学习率lr_c，lr_a
@@ -258,31 +260,38 @@ class TD3(object):
 
         if (not tranLock) or self.pointer < self.var_end_at:
 
-            # 🚀 [新增] 阶段三：判别器在线对抗更新 (Online GAIL)
+            # ==========================================
+            # 🚀 仅更新判别器 (Online GAIL)
+            # Actor 不接触专家数据，完全通过 Critic 间接学习
+            # ==========================================
             if hasattr(self, 'gail_disc') and hasattr(self, 'sample_expert'):
+                # 1. 判别器去专家库抽取“真样本”
                 expert_s, expert_a = self.sample_expert(self.BATCH_SIZE)
                 if expert_s is not None:
-                    # 1. 专家数据标准化 (真数据)
+                    # 专家数据标准化 (真数据)
                     expert_s_n = torch.clamp((expert_s - self.obs_mean) / torch.sqrt(self.obs_var + 1e-8), -5.0, 5.0)
                     expert_a_n = (expert_a - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
-                    # 2. 经验池数据标准化 (假数据)
-                    # b_s 在存入经验池时已经是标准化的了，但 b_a 是原始动作，需要在此处标准化
+                    # 经验池数据标准化 (假数据)
+                    # b_s 和 b_a 是刚才 self.memory.sample(self.BATCH_SIZE) 采出来的 Actor 当前经验
                     b_a_tensor = torch.as_tensor(b_a, dtype=torch.float32, device=device)
+                    # 经验池数据标准化 (假数据) - 直接使用已 detach 的 Tensor
                     fake_a_n = (b_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
-                    fake_s_n = torch.as_tensor(b_s, dtype=torch.float32, device=device)
+                    fake_s_n = b_s_tensor
 
-                    # 3. 判别器算分与更新 (对抗学习)
+                    # 2. 判别器进行对抗学习 (真数据目标 0.9，假数据目标 0.1)
                     self.disc_optimizer.zero_grad()
                     real_logits = self.gail_disc(expert_s_n, expert_a_n)
                     fake_logits = self.gail_disc(fake_s_n, fake_a_n)
 
                     loss_D_real = F.binary_cross_entropy_with_logits(real_logits, torch.full_like(real_logits, 0.9))
                     loss_D_fake = F.binary_cross_entropy_with_logits(fake_logits, torch.full_like(fake_logits, 0.1))
-                    loss_D = loss_D_real + loss_D_fake
 
+                    # 判别器自身的 Loss 并反向传播
+                    loss_D = loss_D_real + loss_D_fake
                     loss_D.backward()
                     self.disc_optimizer.step()
+            # ==========================================
 
             with torch.no_grad():
                 # 计算扰动噪声后的动作a_ (没有用师兄原本的噪声， 用的td3 的噪声
@@ -310,7 +319,7 @@ class TD3(object):
                 target_Q = torch.as_tensor(b_r, dtype=torch.float32, device=device) + self.GAMMA * target_Q
 
             # 获得当前batch Q estimates
-            current_Q1,current_Q2 = self.critic(b_s,b_a)
+            current_Q1,current_Q2 = self.critic(b_s_tensor, b_a_tensor)
             # 计算critic loss = td - error
             self.critic_loss = F.mse_loss(current_Q1,target_Q) +F.mse_loss(current_Q2,target_Q)
 
@@ -319,58 +328,13 @@ class TD3(object):
             self.critic_loss.backward()
             self.critic_optimizer.step()
 
-
             # 延迟策略更新
             if self.update_cnt % self.policy_target_update_interval == 0:
-                # 把状态转为 Tensor 备用
-                b_s_tensor = torch.as_tensor(b_s, dtype=torch.float32, device=device)
-
-                # --- A. 基础 RL 损失 (为了赚钱，听从 Critic 的话) ---
-                rl_loss = -self.critic.Q1(b_s_tensor, self.actor(b_s_tensor)).mean()
-
                 # ==========================================
-                # 🚀 [新增] 阶段三：Actor 混合监督 (DARL Loss)
+                # 🚀 纯粹的 Actor 更新 (Pure Actor)
+                # Actor 绝不接触专家数据，仅通过最大化 Critic 的 Q 值来进化！
                 # ==========================================
-                bc_loss = torch.tensor(0.0, device=device)
-
-                # # 只有 production1 挂载了判别器和专家库，其他智能体不会进入此分支
-                # if hasattr(self, 'gail_disc') and hasattr(self, 'sample_expert') and 'expert_s_n' in locals():
-                #     # 让 Actor 对【专家面临的局势】做出预测
-                #     gen_expert_a_raw = self.actor(expert_s_n)
-                #
-                #     # 行为克隆 MSE 损失 (附带符号暴击，保留你原有的精髓)
-                #     loss_mse_base = F.mse_loss(gen_expert_a_raw, expert_a, reduction='none')
-                #     sign_mismatch = (expert_a * gen_expert_a_raw < 0).float()
-                #     weighted_mse = loss_mse_base * (1.0 + 100.0 * sign_mismatch)
-                #
-                #     # 动态退火权重 (Dynamic Decay)
-                #     # 假设 150000 步是一个分水岭。前排权重高保证专家风范，后期衰减到 0.05 靠 RL 放飞自我
-                #     decay_rate = max(0.05, 1.0 - (self.pointer / 150000.0))
-                #
-                #     # 最终的 BC 损失 (基础权重系数可根据 SwanLab 观察情况进行微调，目前设为 2.0)
-                #     bc_weight = 2.0 * decay_rate
-                #     bc_loss = weighted_mse.mean() * bc_weight
-
-                # 只有 production1 挂载了判别器和专家库，其他智能体不会进入此分支
-                if hasattr(self, 'gail_disc') and hasattr(self, 'sample_expert') and 'expert_s_n' in locals():
-                    # 让 Actor 对【专家面临的局势】做出预测
-                    gen_expert_a_raw = self.actor(expert_s_n)
-
-                    # 行为克隆 MSE 损失 (附带符号暴击)
-                    loss_mse_base = F.mse_loss(gen_expert_a_raw, expert_a, reduction='none')
-                    sign_mismatch = (expert_a * gen_expert_a_raw < 0).float()
-                    weighted_mse = loss_mse_base * (1.0 + 100.0 * sign_mismatch)
-
-                    # ❌ 删除了动态退火逻辑
-                    # ✅ 改为使用固定权重 (Constant Weight)
-                    # 这里的 1.0 是超参数，代表抄作业(BC)和赚钱(RL)一样重要。
-                    # 如果你想让它更偏向赚钱，可以改成 0.5；如果想让它更死板地模仿，可以改成 2.0。
-                    bc_weight = 1.0
-                    bc_loss = weighted_mse.mean() * bc_weight
-
-                # 【终极目标】：融合两个维度的 Loss 共同指导网络更新
-                self.actor_loss = rl_loss + bc_loss
-                # ==========================================
+                self.actor_loss = -self.critic.Q1(b_s_tensor, self.actor(b_s_tensor)).mean()
 
                 self.actor_optimizer.zero_grad()
                 self.actor_loss.backward()
