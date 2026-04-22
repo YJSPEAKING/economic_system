@@ -294,34 +294,46 @@ class TD3(object):
             # ==========================================
 
             with torch.no_grad():
-                # 计算扰动噪声后的动作a_ (没有用师兄原本的噪声， 用的td3 的噪声
+                # 计算扰动噪声后的动作 action_with_noise
                 if self.is_smooth:
-
-                    # noise = (torch.randn_like(torch.FloatTensor(b_a)) * self.policy_noise).clamp(-self.a_bound,self.a_bound)
-                    # action_with_noise = (self.actor_target(b_s_) + noise).clamp(-self.a_bound,self.a_bound)
-
                     sample = torch.distributions.Normal(0., 1.)
                     a_dim = (self.a_dim,)
                     sample_ = sample.sample(a_dim)
-                    noise = torch.clamp(sample_ * self.eval_noise_scale,-2 * self.eval_noise_scale,2 * self.eval_noise_scale)
+                    noise = torch.clamp(sample_ * self.eval_noise_scale, -2 * self.eval_noise_scale,
+                                        2 * self.eval_noise_scale)
                     noise = noise.to(device)
-                    #3.24
-                    b_s_tensor = torch.as_tensor(b_s_, dtype=torch.float32, device=device)  # 先转换类型
-                    action_with_noise = (self.actor_target(b_s_tensor) + noise).clamp(-self.a_bound, self.a_bound)
-                    # action_with_noise = (self.actor_target(b_s_)+noise).clamp(-self.a_bound,self.a_bound)
-                    # print(noise.is_cuda,action_with_noise.is_cuda)
-                # 计算target Q 值
-                target_Q1,target_Q2 = self.critic_target(b_s_,action_with_noise)
-                target_Q = torch.min(target_Q1, target_Q2)
-                # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q * self.discount
-                #3.24
-                # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q
-                target_Q = torch.as_tensor(b_r, dtype=torch.float32, device=device) + self.GAMMA * target_Q
+                    b_s_next_tensor = torch.as_tensor(b_s_, dtype=torch.float32, device=device)
+                    action_with_noise = (self.actor_target(b_s_next_tensor) + noise).clamp(-self.a_bound, self.a_bound)
 
-            # 获得当前batch Q estimates
-            current_Q1,current_Q2 = self.critic(b_s_tensor, b_a_tensor)
-            # 计算critic loss = td - error
-            self.critic_loss = F.mse_loss(current_Q1,target_Q) +F.mse_loss(current_Q2,target_Q)
+                # ==========================================
+                # 🚀 核心修复：实时计算动态内部奖励！
+                # ==========================================
+                # 默认先使用纯环境奖励
+                b_r_tensor_fused = b_r_tensor
+
+                # 如果挂载了判别器，用它对刚抽样出的 b_s 和 b_a 进行实时打分
+                if hasattr(self, 'gail_disc') and 'fake_s_n' in locals():
+                    # fake_s_n 和 fake_a_n 在上面的判别器更新块里已经标准化过了
+                    disc_logits = self.gail_disc(fake_s_n, fake_a_n)
+                    # 采用 Sigmoid 将分数平滑限制在 0~1 之间，绝对不会造成 Q 值爆炸
+                    dynamic_r_int = torch.sigmoid(disc_logits)
+
+                    # 此时的融合权重 w_gail。建议从 1.0 或 2.0 开始试。
+                    w_gail = 2.0
+                    b_r_tensor_fused = b_r_tensor + w_gail * dynamic_r_int
+                # ==========================================
+
+                # 计算 target Q 值
+                target_Q1, target_Q2 = self.critic_target(b_s_, action_with_noise)
+                target_Q = torch.min(target_Q1, target_Q2)
+
+                # 🎯 使用融合了【实时判别器打分】和【真实环境利润】的混合奖励去更新 Critic！
+                target_Q = b_r_tensor_fused + self.GAMMA * target_Q
+
+            # 获得当前 batch 的 Q estimates
+            current_Q1, current_Q2 = self.critic(b_s_tensor, b_a_tensor)
+            # 计算 critic loss = td - error
+            self.critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
             # Optimize the critic
             self.critic_optimizer.zero_grad()
@@ -349,28 +361,6 @@ class TD3(object):
                     target_param.data.copy_(self.TAU * param.data + (1 - self.TAU) * target_param.data)
         # 只计算critic 的loss 不进行网络更新
         else:
-            '''with torch.no_grad():
-                # 计算扰动噪声后的动作a_
-                if self.is_smooth:
-                    sample = torch.distributions.Normal(0., 1.)
-                    # 数据格式处理
-                    a_dim = [self.a_dim]
-                    a_dim = torch.tensor(a_dim)
-                    torch.unsqueeze(a_dim, 0)
-                    x = sample.sample(a_dim)
-                    noise = torch.clamp(x * self.eval_noise_scale,
-                                        -2 * self.eval_noise_scale,
-                                        2 * self.eval_noise_scale)  # torch.clamp(x,min,max)
-                    noise_a_ = torch.clamp(self.actor_target(b_s_) + noise, self.a_bound, self.a_bound)
-                else:
-                    noise_a_ = self.actor_target(b_s_)
-                # 计算target Q 值
-                target_Q1 = self.critic_target.Q1(b_s_, noise_a_)
-                target_Q2 = self.critic_target.Q2(b_s_, noise_a_)
-                target_Q = torch.min(target_Q1, target_Q2)
-                target_Q = torch.tensor(b_r) + self.GAMMA * target_Q
-                # 获得当前batch Q estimates'
-            '''
             with torch.no_grad():
                 # 计算扰动噪声后的动作a_ (没有用师兄原本的噪声， 用的td3 的噪声
                 if self.is_smooth:

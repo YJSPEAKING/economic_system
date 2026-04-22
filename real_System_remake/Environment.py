@@ -52,7 +52,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="在线GAIL+强化学习v1.3，删除状态流向Actor",
+                         notes="在线GAIL+强化学习v1.4，修改经验池和Critic更新逻辑",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了

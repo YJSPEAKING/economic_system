@@ -183,15 +183,15 @@ class enterprise_nnu:
                 a_t = torch.as_tensor(action, dtype=torch.float32, device=self.device)
                 a_n = (a_t - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
-                # 3. 计算内部奖励
+                # 3. 计算内部奖励 (仅用于 SwanLab 观察，绝不存入经验池)
                 logits = self.gail_disc(s_n.unsqueeze(0), a_n.unsqueeze(0))
                 score = torch.sigmoid(logits)
-                r_int = -torch.log(1 - score + 1e-8).item()
-
-                # 可以在此处通过参数接收 w_gail
-                w_gail = 0.65
-                final_reward = reward + w_gail * r_int
+                # 建议这里直接用 score.item()，用 -log 如果不稳定会导致数值爆炸
+                r_int = score.item()
                 self.last_internal_reward = r_int
+
+                # 保持最纯净的环境奖励
+                final_reward = reward
 
             # 必须把标准化后的状态存入经验池！
             s_to_store = s_n.cpu().numpy()
