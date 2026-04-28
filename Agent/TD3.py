@@ -261,36 +261,38 @@ class TD3(object):
         if (not tranLock) or self.pointer < self.var_end_at:
 
             # ==========================================
-            # 🚀 仅更新判别器 (Online GAIL)
-            # Actor 不接触专家数据，完全通过 Critic 间接学习
+            # 🚀 阶段三：判别器在线对抗更新 (加强版 - 增加更新步数比)
             # ==========================================
+            # 设置步数比 n:1，这里 n=3 代表判别器学3次，Actor/Critic才学1次
+            disc_update_ratio = 3
+
             if hasattr(self, 'gail_disc') and hasattr(self, 'sample_expert'):
-                # 1. 判别器去专家库抽取“真样本”
-                expert_s, expert_a = self.sample_expert(self.BATCH_SIZE)
-                if expert_s is not None:
-                    # 专家数据标准化 (真数据)
-                    expert_s_n = torch.clamp((expert_s - self.obs_mean) / torch.sqrt(self.obs_var + 1e-8), -5.0, 5.0)
-                    expert_a_n = (expert_a - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
+                # 开启循环“加练”模式
+                for _ in range(disc_update_ratio):
+                    expert_s, expert_a = self.sample_expert(self.BATCH_SIZE)
+                    if expert_s is not None:
+                        # 1. 数据标准化 (真/假数据)
+                        expert_s_n = torch.clamp((expert_s - self.obs_mean) / torch.sqrt(self.obs_var + 1e-8), -5.0,
+                                                 5.0)
+                        expert_a_n = (expert_a - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
-                    # 经验池数据标准化 (假数据)
-                    # b_s 和 b_a 是刚才 self.memory.sample(self.BATCH_SIZE) 采出来的 Actor 当前经验
-                    b_a_tensor = torch.as_tensor(b_a, dtype=torch.float32, device=device)
-                    # 经验池数据标准化 (假数据) - 直接使用已 detach 的 Tensor
-                    fake_a_n = (b_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
-                    fake_s_n = b_s_tensor
+                        # 注意：这里直接用 self.memory.sample 重新抽样，
+                        # 或者为了性能，也可以复用外层 b_s/b_a
+                        b_a_tensor = torch.as_tensor(b_a, dtype=torch.float32, device=device)
+                        fake_a_n = (b_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
+                        fake_s_n = b_s_tensor
 
-                    # 2. 判别器进行对抗学习 (真数据目标 0.9，假数据目标 0.1)
-                    self.disc_optimizer.zero_grad()
-                    real_logits = self.gail_disc(expert_s_n, expert_a_n)
-                    fake_logits = self.gail_disc(fake_s_n, fake_a_n)
+                        # 2. 对抗学习
+                        self.disc_optimizer.zero_grad()
+                        real_logits = self.gail_disc(expert_s_n, expert_a_n)
+                        fake_logits = self.gail_disc(fake_s_n, fake_a_n)
 
-                    loss_D_real = F.binary_cross_entropy_with_logits(real_logits, torch.full_like(real_logits, 0.9))
-                    loss_D_fake = F.binary_cross_entropy_with_logits(fake_logits, torch.full_like(fake_logits, 0.1))
+                        loss_D_real = F.binary_cross_entropy_with_logits(real_logits, torch.full_like(real_logits, 0.9))
+                        loss_D_fake = F.binary_cross_entropy_with_logits(fake_logits, torch.full_like(fake_logits, 0.1))
 
-                    # 判别器自身的 Loss 并反向传播
-                    loss_D = loss_D_real + loss_D_fake
-                    loss_D.backward()
-                    self.disc_optimizer.step()
+                        loss_D = loss_D_real + loss_D_fake
+                        loss_D.backward()
+                        self.disc_optimizer.step()
             # ==========================================
 
             with torch.no_grad():

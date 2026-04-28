@@ -27,6 +27,21 @@ import gc
 import torch
 import torch.nn as nn
 import swanlab as wandb
+import numpy as np
+
+def seed_everything(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # 牺牲一点点训练速度，换取绝对的复现性
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+# 在程序第一行就执行！
+seed_everything(seed=184) # 设定一个你喜欢的数字
 
 use_wandb = True
 stable_at = 8000
