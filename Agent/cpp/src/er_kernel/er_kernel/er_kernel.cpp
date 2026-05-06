@@ -3,11 +3,20 @@
 
 #include "stdafx.h"
 #include "er_kernel.h"
+#include <cstdlib> // [新增] 引入 C 标准库以使用 srand
 
 #define DEFAULT_ALLOW_SHORT_SEQ	false
 #define DEFAULT_PICK_LEN		1
 
 PTR ex_rp_new(LH_REC_T max_record_num, SEQ_LEN_T pick_len, INT32 allow_short_seq) {
+    // ====== 🚀 【新增】强制锁定 C++ 全局随机种子 ======
+    // 使用静态变量保证在 DLL 生命周期内只初始化一次
+    static bool is_seeded = false;
+    if (!is_seeded) {
+        std::srand(184); // 强制固定为你项目里的 random_seed
+        is_seeded = true;
+    }
+    // ==============================================
 	EX_RP* pER = new EX_RP;
 	pER->max_record_num = max_record_num;
 	BATCH_MAKER* pBM = &(pER->batch_maker);
