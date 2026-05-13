@@ -321,7 +321,7 @@ class TD3(object):
                     dynamic_r_int = torch.sigmoid(disc_logits)
 
                     # 此时的融合权重 w_gail。建议从 1.0 或 2.0 开始试。
-                    w_gail = 9.0
+                    w_gail = 2.0
                     b_r_tensor_fused = b_r_tensor + w_gail * dynamic_r_int
                 # ==========================================
 

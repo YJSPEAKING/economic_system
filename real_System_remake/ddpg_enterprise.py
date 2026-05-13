@@ -118,10 +118,16 @@ class enterprise_nnu:
             for param in self.gail_disc.parameters():
                 param.requires_grad = True
 
-            # 为判别器装配独立的优化器
-            self.disc_optimizer = torch.optim.Adam(self.gail_disc.parameters(), lr=3e-4)
-            print(f"🔥 判别器已解冻并装配优化器，准备在线对抗！")
+            # ❌ 删掉你原本的这一行
+            # self.disc_optimizer = torch.optim.Adam(self.gail_disc.parameters(), lr=3e-4)
 
+            # ✅ 替换为以下这行（加入镇静剂：降低学习率 + 添加 L2 正则化）
+            self.disc_optimizer = torch.optim.Adam(
+                self.gail_disc.parameters(),
+                lr=3e-5,  # 降低学习率，让它学得慢一点
+                weight_decay=1e-2  # 核心！加入强大的权重衰减，强制打分变平滑
+            )
+            print(f"🔥 判别器已装配降智版优化器 (低LR+高Weight Decay)！")
             # 统一命名为 last_internal_reward
             self.last_internal_reward = 0.0
 
