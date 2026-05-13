@@ -113,21 +113,8 @@ class enterprise_nnu:
             if os.path.exists(disc_path):
                 self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device))
 
-            # 【核心改变】：解冻判别器，开启训练模式
-            self.gail_disc.train()
-            for param in self.gail_disc.parameters():
-                param.requires_grad = True
+            self.disc_optimizer = torch.optim.Adam(self.gail_disc.parameters(), lr=3e-4)
 
-            # ❌ 删掉你原本的这一行
-            # self.disc_optimizer = torch.optim.Adam(self.gail_disc.parameters(), lr=3e-4)
-
-            # ✅ 替换为以下这行（加入镇静剂：降低学习率 + 添加 L2 正则化）
-            self.disc_optimizer = torch.optim.Adam(
-                self.gail_disc.parameters(),
-                lr=3e-5,  # 降低学习率，让它学得慢一点
-                weight_decay=1e-2  # 核心！加入强大的权重衰减，强制打分变平滑
-            )
-            print(f"🔥 判别器已装配降智版优化器 (低LR+高Weight Decay)！")
             # 统一命名为 last_internal_reward
             self.last_internal_reward = 0.0
 
