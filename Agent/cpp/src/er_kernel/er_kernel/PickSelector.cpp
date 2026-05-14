@@ -3,11 +3,13 @@
 #include <sys/timeb.h>
 
 inline void set_rand_seed() {
-    // ==========================================
-    // 🚀 【修改】废弃时间戳种子，强制使用固定种子
-    // 彻底消灭 C++ 底层采样带来的毫秒级随机性
-    // ==========================================
-    srand(184); // 直接硬编码为你的 config.random_seed
+	struct timeb T;
+	ftime(&T);
+#pragma warning(push)
+#pragma warning(disable: 4244)
+	UINT32 t = T.time * 1000 + T.millitm;
+#pragma warning(pop)
+	srand(t);
 }
 
 inline UINT64 rand_UINT64(UINT64 ceil = 0xffffffffffffffffULL) {

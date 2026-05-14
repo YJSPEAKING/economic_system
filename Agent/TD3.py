@@ -88,6 +88,19 @@ class TD3(object):
         self.a_bound = config.action_bound
         self.scope = config.scope
         self.memory = Memory(capacity=config.MEMORY_CAPACITY, dims=2 * self.s_dim + self.a_dim + 1)
+        # ==========================================
+        # 🚀 新增：动态探测并设置底层 C++ 随机种子
+        # ==========================================
+        if hasattr(config, 'random_seed'):
+            # 情况1：如果 Memory 类自己就有 set_seed 方法（比如它直接继承了 C++ 壳子）
+            if hasattr(self.memory, 'set_seed'):
+                self.memory.set_seed(config.random_seed)
+            # 情况2：如果 Memory 内部包含了一个叫 exp_rep 的 C++ 实例
+            elif hasattr(self.memory, 'exp_rep') and hasattr(self.memory.exp_rep, 'set_seed'):
+                self.memory.exp_rep.set_seed(config.random_seed)
+            # 情况3：如果是个纯 Numpy 数组经验池，上面两个 if 都不会触发，安全跳过。
+            # （因为纯 Numpy 经验池的随机性已经被 System.py 顶部的 seed_everything 控制了！）
+        # ==========================================
         self.LR_A = config.LEARNING_RATE_ACTOR
         self.LR_C = config.LEARNING_RATE_CRITIC
         self.LR_A_STABLE = config.LEARNING_RATE_ACTOR_STABLE
@@ -321,7 +334,7 @@ class TD3(object):
                     dynamic_r_int = torch.sigmoid(disc_logits)
 
                     # 此时的融合权重 w_gail。建议从 1.0 或 2.0 开始试。
-                    w_gail = 2.0
+                    w_gail = 10.5
                     b_r_tensor_fused = b_r_tensor + w_gail * dynamic_r_int
                 # ==========================================
 

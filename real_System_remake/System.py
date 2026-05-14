@@ -57,7 +57,7 @@ enterprise_ddpg_config = Config(
     learning_rate_actor=1e-3,
     learning_rate_critic=2e-3,
     learning_rate_decay=1,
-    random_seed=184,
+    random_seed=184,   # 传入 >= 0 的数，彻底锁死 C++ 的随机性；传入 -1，底层就会根据系统毫秒时间完全随机
     batch_size=1024,
     memory_capacity=80000,
     smooth_noise=0.01,

@@ -3,8 +3,15 @@
   "WorkspaceRootPath": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\software\\VisualStudio\\Community\\MSBuild\\Microsoft\\VC\\v170\\Microsoft.CppBuild.targets||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\er_kernel.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|solutionrelative:er_kernel\\er_kernel.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\PickSelector.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|solutionrelative:er_kernel\\PickSelector.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\common.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
@@ -13,10 +20,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\er_kernel.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|solutionrelative:er_kernel\\er_kernel.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\PickSelector.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
-      "RelativeMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|solutionrelative:er_kernel\\PickSelector.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\WeightedVector.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
@@ -33,11 +36,24 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 2,
+          "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 0,
+              "Title": "Microsoft.CppBuild.targets",
+              "DocumentMoniker": "D:\\software\\VisualStudio\\Community\\MSBuild\\Microsoft\\VC\\v170\\Microsoft.CppBuild.targets",
+              "RelativeDocumentMoniker": "..\\..\\..\\..\\..\\..\\..\\..\\..\\software\\VisualStudio\\Community\\MSBuild\\Microsoft\\VC\\v170\\Microsoft.CppBuild.targets",
+              "ToolTip": "D:\\software\\VisualStudio\\Community\\MSBuild\\Microsoft\\VC\\v170\\Microsoft.CppBuild.targets",
+              "RelativeToolTip": "..\\..\\..\\..\\..\\..\\..\\..\\..\\software\\VisualStudio\\Community\\MSBuild\\Microsoft\\VC\\v170\\Microsoft.CppBuild.targets",
+              "ViewState": "AgIAAMIBAAAAAAAAAAD4v84BAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003801|",
+              "WhenOpened": "2026-05-14T04:14:47.784Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
               "Title": "common.h",
               "DocumentMoniker": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\common.h",
               "RelativeDocumentMoniker": "er_kernel\\common.h",
@@ -49,7 +65,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 5,
               "Title": "WeightedVector.cpp",
               "DocumentMoniker": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\WeightedVector.cpp",
               "RelativeDocumentMoniker": "er_kernel\\WeightedVector.cpp",
@@ -61,32 +77,33 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "er_kernel.cpp",
               "DocumentMoniker": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\er_kernel.cpp",
               "RelativeDocumentMoniker": "er_kernel\\er_kernel.cpp",
               "ToolTip": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\er_kernel.cpp",
               "RelativeToolTip": "er_kernel\\er_kernel.cpp",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAPQBAAAAAAAAAAAAAPsBAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
               "WhenOpened": "2026-05-06T08:33:20.166Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 2,
               "Title": "PickSelector.cpp",
               "DocumentMoniker": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\PickSelector.cpp",
               "RelativeDocumentMoniker": "er_kernel\\PickSelector.cpp",
               "ToolTip": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\PickSelector.cpp",
               "RelativeToolTip": "er_kernel\\PickSelector.cpp",
-              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAsAAAAKAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
-              "WhenOpened": "2026-05-06T08:33:20.412Z"
+              "WhenOpened": "2026-05-06T08:33:20.412Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 4,
               "Title": "er_kernel.h",
               "DocumentMoniker": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Agent\\cpp\\src\\er_kernel\\er_kernel\\er_kernel.h",
               "RelativeDocumentMoniker": "er_kernel\\er_kernel.h",
@@ -98,7 +115,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 6,
               "Title": "\u6E901.cpp",
               "DocumentMoniker": "C:\\Users\\lyk\\Desktop\\\u6E901.cpp",
               "ToolTip": "C:\\Users\\lyk\\Desktop\\\u6E901.cpp",

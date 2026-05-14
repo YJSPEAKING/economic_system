@@ -29,6 +29,11 @@ REWARD_T = c_float
 PRIORITY_T = c_float
 SEQ_LEN_T = H_REC_T
 
+try:
+    _ex_rp_set_seed = _er_kernel.ex_rp_set_seed
+    _ex_rp_set_seed.argtypes = [c_int32]
+except AttributeError:
+    _ex_rp_set_seed = None # 防呆设计：如果 DLL 没编译好，也不会马上报错
 _ex_rp_new = _er_kernel.ex_rp_new
 _ex_rp_new.restype = PTR
 _ex_rp_del = _er_kernel.ex_rp_del
@@ -87,6 +92,12 @@ class Experience_Replay:
         _ex_rp_clear(self._kernel)
         self._state_shape = None
         self._mutex.unlock()
+
+    def set_seed(self, seed: int):
+        if _ex_rp_set_seed is not None:
+            self._mutex.lock()
+            _ex_rp_set_seed(c_int32(seed))
+            self._mutex.unlock()
 
     def new_episode(self):
         self._mutex.lock()

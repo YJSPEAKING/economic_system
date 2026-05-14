@@ -3,32 +3,25 @@
 
 #include "stdafx.h"
 #include "er_kernel.h"
+#include <sys/timeb.h>
 #include <cstdlib> // [新增] 引入 C 标准库以使用 srand
 
 #define DEFAULT_ALLOW_SHORT_SEQ	false
 #define DEFAULT_PICK_LEN		1
 
 PTR ex_rp_new(LH_REC_T max_record_num, SEQ_LEN_T pick_len, INT32 allow_short_seq) {
-    // ====== 🚀 【新增】强制锁定 C++ 全局随机种子 ======
-    // 使用静态变量保证在 DLL 生命周期内只初始化一次
-    static bool is_seeded = false;
-    if (!is_seeded) {
-        std::srand(184); // 强制固定为你项目里的 random_seed
-        is_seeded = true;
-    }
-    // ==============================================
-	EX_RP* pER = new EX_RP;
-	pER->max_record_num = max_record_num;
-	BATCH_MAKER* pBM = &(pER->batch_maker);
-	if (allow_short_seq >= 0) pBM->allow_short_seq = allow_short_seq;
-	else pBM->allow_short_seq = DEFAULT_ALLOW_SHORT_SEQ;
-	if (pick_len > 0) pBM->pick_len = pick_len;
-	else pBM->pick_len = DEFAULT_PICK_LEN;
-	pER->remove_handle = -1;
-	pBM->ps_table.push_back(new PS_UniRand());
-	PTR ptrER = (PTR)pER;
-	ex_rp_clear(ptrER);
-	return ptrER;
+    EX_RP* pER = new EX_RP;
+    pER->max_record_num = max_record_num;
+    BATCH_MAKER* pBM = &(pER->batch_maker);
+    if (allow_short_seq >= 0) pBM->allow_short_seq = allow_short_seq;
+    else pBM->allow_short_seq = DEFAULT_ALLOW_SHORT_SEQ;
+    if (pick_len > 0) pBM->pick_len = pick_len;
+    else pBM->pick_len = DEFAULT_PICK_LEN;
+    pER->remove_handle = -1;
+    pBM->ps_table.push_back(new PS_UniRand());
+    PTR ptrER = (PTR)pER;
+    ex_rp_clear(ptrER);
+    return ptrER;
 }
 
 void ex_rp_del(PTR ptrER) {
@@ -511,4 +504,17 @@ void ex_rp_decoded_action(ACTION_T encoded_value, ACTION_PY* array, int action_s
 		array[i] = sign_bit ? -value : value;
 	}
 	
+}
+
+// 导出给 Python 调用的设置种子的接口
+// 如果传入 >= 0 的数，就固定种子；如果传入 < 0 的数（比如 -1），就恢复时间随机
+extern "C" __declspec(dllexport) void ex_rp_set_seed(INT32 seed) {
+    if (seed >= 0) {
+        srand(seed);
+    } else {
+        struct timeb T;
+        ftime(&T);
+        UINT32 t = T.time * 1000 + T.millitm;
+        srand(t);
+    }
 }
