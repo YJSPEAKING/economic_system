@@ -140,8 +140,8 @@ class System:
     def run(self):
 
         for episode in range(10000):
-            if self.epiday > 200000 and episode % 100 == 0:
-                break
+            # if self.epiday > 200000 and episode % 100 == 0:
+            #     break
             state = self.env.reset()
             last_state = None
             last_action = None
