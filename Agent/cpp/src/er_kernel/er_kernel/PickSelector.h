@@ -24,6 +24,9 @@ public:
 
 typedef vector<PickSelector*> PS_TABLE;
 
+void set_er_rand_seed(INT32 seed);
+void init_er_rand_seed();
+
 class PS_UniRand : public PickSelector {
 private:
 	LH_REC_T pick_num;

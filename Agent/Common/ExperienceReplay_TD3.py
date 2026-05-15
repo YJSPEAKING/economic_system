@@ -107,6 +107,12 @@ class Experience_Replay:
         self._action_shape = None
         self._mutex.unlock()
 
+    def set_seed(self, seed: int):
+        if _ex_rp_set_seed is not None:
+            self._mutex.lock()
+            _ex_rp_set_seed(c_int32(seed))
+            self._mutex.unlock()
+
     def new_episode(self):
         self._mutex.lock()
         h_epi = _ex_rp_new_episode(self._kernel)

@@ -1,10 +1,9 @@
-ï»¿// er_kernel.cpp : å®šä¹‰ DLL åº”ç”¨ç¨‹åºçš„å¯¼å‡ºå‡½æ•°ã€‚
+// er_kernel.cpp : ¶¨Òå DLL Ó¦ÓÃ³ÌĞòµÄµ¼³öº¯Êı¡£
 //
 
 #include "stdafx.h"
 #include "er_kernel.h"
-#include <sys/timeb.h>
-#include <cstdlib> // [æ–°å¢] å¼•å…¥ C æ ‡å‡†åº“ä»¥ä½¿ç”¨ srand
+#include <cstdlib> // [ĞÂÔö] ÒıÈë C ±ê×¼¿âÒÔÊ¹ÓÃ srand
 
 #define DEFAULT_ALLOW_SHORT_SEQ	false
 #define DEFAULT_PICK_LEN		1
@@ -428,16 +427,16 @@ void ex_rp_del_pick_selector(PTR ptrER, H_PS_T hPS) {
 }
 
 
-//ä»¥ä¸‹ä»£ç ç”±Annaç¯¡æ”¹hh
+//ÒÔÏÂ´úÂëÓÉAnna´Û¸Ähh
 void ex_rp_decoded_batch_actions(PTR ptrER, ACTION_T* encoded_values, ACTION_PY* actions, BATCH_SIZE_T batchsize, int picklen, int action_size) {
-	// æ³¨æ„ï¼šç°åœ¨actionsæ˜¯ä¸€ä¸ªä¸€ç»´æ•°ç»„ï¼Œä¸å†éœ€è¦åˆ†é…å†…å­˜ç»™æ¯ä¸ªbatchçš„å­æ•°ç»„
-	// (*actions)å·²ç»è¢«å‡å®šä¸ºè¶³å¤Ÿå¤§ï¼Œèƒ½å¤Ÿå®¹çº³æ‰€æœ‰è§£ç åçš„æ•°æ®
+	// ×¢Òâ£ºÏÖÔÚactionsÊÇÒ»¸öÒ»Î¬Êı×é£¬²»ÔÙĞèÒª·ÖÅäÄÚ´æ¸øÃ¿¸öbatchµÄ×ÓÊı×é
+	// (*actions)ÒÑ¾­±»¼Ù¶¨Îª×ã¹»´ó£¬ÄÜ¹»ÈİÄÉËùÓĞ½âÂëºóµÄÊı¾İ
 
 	for (int i = 0; i < batchsize; i++) {
 		for (int j = 0; j < picklen; j++) {
-			// è®¡ç®—å½“å‰åŠ¨ä½œåœ¨ä¸€ç»´æ•°ç»„ä¸­çš„èµ·å§‹ç´¢å¼•
+			// ¼ÆËãµ±Ç°¶¯×÷ÔÚÒ»Î¬Êı×éÖĞµÄÆğÊ¼Ë÷Òı
 			int start_index = (i * picklen * action_size) + (j * action_size);
-			// è§£ç æ¯ä¸ªencoded_valueï¼Œå¹¶å¡«å……åˆ°actionsæ•°ç»„çš„æ­£ç¡®ä½ç½®
+			// ½âÂëÃ¿¸öencoded_value£¬²¢Ìî³äµ½actionsÊı×éµÄÕıÈ·Î»ÖÃ
 			ex_rp_decoded_action(encoded_values[i * picklen + j], &(actions[start_index]), action_size);
 		}
 	}
@@ -445,18 +444,18 @@ void ex_rp_decoded_batch_actions(PTR ptrER, ACTION_T* encoded_values, ACTION_PY*
 /*
 
 void ex_rp_decoded_batch_actions(PTR ptrER, ACTION_T** encoded_values, ACTION_PY*** actions, int batchsize, int picklen, int action_size) {
-	// ä¸ºactionsåˆ†é…å†…å­˜
+	// Îªactions·ÖÅäÄÚ´æ
 	*actions = (float**)malloc(batchsize * sizeof(float*));
 	for (int i = 0; i < batchsize; i++) {
 		(*actions)[i] = (float*)malloc(picklen * action_size * sizeof(float));
 		for (int j = 0; j < picklen; j++) {
-			// è§£ç æ¯ä¸ªencoded_valueï¼Œå¹¶å¡«å……åˆ°actionsæ•°ç»„
+			// ½âÂëÃ¿¸öencoded_value£¬²¢Ìî³äµ½actionsÊı×é
 			ex_rp_decoded_action(encoded_values[i][j], &((*actions)[i][j * action_size]), action_size);
 		}
 	}
 }
 */
-// å°†actionæ•°ç»„è½¬æ¢ä¸ºä¸€ä¸ªint64æ•´æ•°ï¼Œï¼Œå‰é¢4*12ä½ä¸ºæ•°å€¼ä½(ä¸ºäº†é˜²æ­¢æº¢å‡ºï¼Œ12ä½ä¸­å10ä½æ˜¯å­˜æ•°æ®çš„),åå››ä½ä¸ºç¬¦å·ä½
+// ½«actionÊı×é×ª»»ÎªÒ»¸öint64ÕûÊı£¬£¬Ç°Ãæ4*12Î»ÎªÊıÖµÎ»(ÎªÁË·ÀÖ¹Òç³ö£¬12Î»ÖĞºó10Î»ÊÇ´æÊı¾İµÄ),ºóËÄÎ»Îª·ûºÅÎ»
 ACTION_T ex_rp_encoded_action(PTR ptrER, ACTION_PY* array, int action_size) {
 	ACTION_T result = 0;
 	ACTION_T sign_bits = 0;
@@ -486,35 +485,28 @@ ACTION_T ex_rp_encoded_action(PTR ptrER, ACTION_PY* array, int action_size) {
 
 
 void ex_rp_decoded_action(ACTION_T encoded_value, ACTION_PY* array, int action_size) {
-	// ä»ç¼–ç ä¸­æå–æ‰€æœ‰ç¬¦å·ä½
+	// ´Ó±àÂëÖĞÌáÈ¡ËùÓĞ·ûºÅÎ»
 	ACTION_T signs = encoded_value & 0xF;
 	encoded_value = encoded_value >> action_size;
 	for (int i = 0; i < action_size; i++) {
-		//å»æ‰æœ«å°¾çš„ç¬¦å·ä½
-		// è®¡ç®—æ¯ä¸ªæ•°å€¼çš„ç´¢å¼•ä½ç½®
+		//È¥µôÄ©Î²µÄ·ûºÅÎ»
+		// ¼ÆËãÃ¿¸öÊıÖµµÄË÷ÒıÎ»ÖÃ
 		int index = (action_size - 1 - i) * 12;
-		// æå–å½“å‰æ•°å€¼çš„ç¬¦å·ä½
+		// ÌáÈ¡µ±Ç°ÊıÖµµÄ·ûºÅÎ»
 		int sign_bit = (signs >> (action_size - i - 1)) & 1;
-		// æå–æ•°å€¼ä½
-		ACTION_T shifted_value = (encoded_value >> index) & 0xFFF; // 0xFFF è¡¨ç¤º 10 ä½
+		// ÌáÈ¡ÊıÖµÎ»
+		ACTION_T shifted_value = (encoded_value >> index) & 0xFFF; // 0xFFF ±íÊ¾ 10 Î»
 
-		// å°†æå–çš„æ•´æ•°å€¼è½¬æ¢å›æµ®ç‚¹æ•°
+		// ½«ÌáÈ¡µÄÕûÊıÖµ×ª»»»Ø¸¡µãÊı
 		float value = (float)shifted_value / (1 << 10);
-		// æ ¹æ®ç¬¦å·ä½åº”ç”¨ç¬¦å·
+		// ¸ù¾İ·ûºÅÎ»Ó¦ÓÃ·ûºÅ
 		array[i] = sign_bit ? -value : value;
 	}
 	
 }
 
-// å¯¼å‡ºç»™ Python è°ƒç”¨çš„è®¾ç½®ç§å­çš„æ¥å£
-// å¦‚æœä¼ å…¥ >= 0 çš„æ•°ï¼Œå°±å›ºå®šç§å­ï¼›å¦‚æœä¼ å…¥ < 0 çš„æ•°ï¼ˆæ¯”å¦‚ -1ï¼‰ï¼Œå°±æ¢å¤æ—¶é—´éšæœº
+// µ¼³ö¸ø Python µ÷ÓÃµÄÉèÖÃÖÖ×ÓµÄ½Ó¿Ú
+// Èç¹û´«Èë >= 0 µÄÊı£¬¾Í¹Ì¶¨ÖÖ×Ó£»Èç¹û´«Èë < 0 µÄÊı£¨±ÈÈç -1£©£¬¾Í»Ö¸´Ê±¼äËæ»ú
 extern "C" __declspec(dllexport) void ex_rp_set_seed(INT32 seed) {
-    if (seed >= 0) {
-        srand(seed);
-    } else {
-        struct timeb T;
-        ftime(&T);
-        UINT32 t = T.time * 1000 + T.millitm;
-        srand(t);
-    }
+	set_er_rand_seed(seed);
 }

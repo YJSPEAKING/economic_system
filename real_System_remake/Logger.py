@@ -1,4 +1,4 @@
-# 用这个logger文件
+﻿# 用这个logger文件
 from .Enterprise import Enterprise
 from .Bank import Bank
 import matplotlib
@@ -346,7 +346,10 @@ class Logger:
         for i in range(start, end):
             count += day[i]
         res = count/100
-        swanlab.log({'每百回合/存活天数': res})
+        if epi is None:
+            swanlab.log({'每百回合/存活天数': res})
+        else:
+            swanlab.log({'每百回合/存活天数': res}, step=epi // 100)
 
         # 每百回合累计奖励
         #   enterprise

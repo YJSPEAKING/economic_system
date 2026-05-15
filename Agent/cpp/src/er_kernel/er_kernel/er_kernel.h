@@ -84,6 +84,7 @@ H_PS_T ex_rp_new_pick_selector(PTR ptrER) {
 DLL_EXPORT PTR ex_rp_new(LH_REC_T max_record_num, SEQ_LEN_T pick_len, INT32 allow_short_seq);
 DLL_EXPORT void ex_rp_del(PTR ptrER);
 DLL_EXPORT void ex_rp_clear(PTR ptrER);
+DLL_EXPORT void ex_rp_set_seed(INT32 seed);
 
 DLL_EXPORT UINT64 ex_rp_serialize_size(PTR ptrER);
 DLL_EXPORT void ex_rp_serialize(PTR ptrER, char* pSer);

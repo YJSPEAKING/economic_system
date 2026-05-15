@@ -1,22 +1,17 @@
-﻿  stdafx.cpp
-  dllmain.cpp
-  er_kernel.cpp
-D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\er_kernel\er_kernel.cpp(352,69): warning C4267: “return”: 从“size_t”转换到“INT32”，可能丢失数据
-  (编译源文件“/er_kernel.cpp”)
-  
-D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\er_kernel\er_kernel.cpp(436,20): warning C4018: “<”: 有符号/无符号不匹配
-  (编译源文件“/er_kernel.cpp”)
-  
-D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\er_kernel\er_kernel.cpp(466,24): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-  (编译源文件“/er_kernel.cpp”)
-  
-D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\er_kernel\er_kernel.cpp(517,18): warning C4244: “初始化”: 从“time_t”转换到“UINT32”，可能丢失数据
-  (编译源文件“/er_kernel.cpp”)
-  
-  PickSelector.cpp
-  PS_greedy_bin_heap.cpp
+﻿  PS_greedy_bin_heap.cpp
   PS_greedy_rb_tree.cpp
+  PickSelector.cpp
   WeightedVector.cpp
+  er_kernel.cpp
   正在生成代码...
+D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\er_kernel\er_kernel.cpp(351,69): warning C4267: “return”: 从“size_t”转换到“INT32”，可能丢失数据
+  (编译源文件“/er_kernel.cpp”)
+  
+D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\er_kernel\er_kernel.cpp(435,20): warning C4018: “<”: 有符号/无符号不匹配
+  (编译源文件“/er_kernel.cpp”)
+  
+D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\er_kernel\er_kernel.cpp(465,24): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+  (编译源文件“/er_kernel.cpp”)
+  
     正在创建库 D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\x64\Debug\er_kernel.lib 和对象 D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\x64\Debug\er_kernel.exp
   er_kernel.vcxproj -> D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\Agent\cpp\src\er_kernel\x64\Debug\er_kernel.dll

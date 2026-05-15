@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import io
 
@@ -9,6 +9,7 @@ from real_System_remake.Enterprise_config import Enterprise_config
 from real_System_remake.Bank_config import Bank_config
 from real_System_remake.ddpg_enterprise import enterprise_nnu
 from real_System_remake.ddpg_bank import bank_nnu
+import real_System_remake.Environment as environment_module
 # from real_System_remake.td3_enterprise_lstm  import enterprise_nnu
 # from real_System_remake.td3_bank_lstm import bank_nnu
 # from real_System_remake.td3_enterprise_rbtree  import enterprise_nnu
@@ -32,7 +33,7 @@ import numpy as np
 def seed_everything(seed=42):
     random.seed(seed)
     np.random.seed(seed)
-    os.environ['PYTHONHA SHSEED'] = str(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -41,7 +42,7 @@ def seed_everything(seed=42):
     torch.backends.cudnn.benchmark = False
 
 # 在程序第一行就执行！
-seed_everything(seed=184) # 设定一个你喜欢的数字
+CURRENT_SEED = 184
 
 use_wandb = True
 stable_at = 8000
@@ -97,6 +98,15 @@ bank_ddpg_config = Config(
     lrc_ra=2e-4
 )
 
+def apply_run_seed(seed):
+    global CURRENT_SEED
+    CURRENT_SEED = int(seed)
+    seed_everything(CURRENT_SEED)
+    enterprise_ddpg_config.set_seed(CURRENT_SEED)
+    bank_ddpg_config.set_seed(CURRENT_SEED)
+    environment_module.swanlab_config['enterprise_ddpg_config']['random_seed'] = CURRENT_SEED
+    environment_module.swanlab_config['bank_ddpg_config']['random_seed'] = CURRENT_SEED
+
 bank_config = Bank_config(
     name='bank1',
     fund=2000,
@@ -117,8 +127,10 @@ enterprise_add_list = {
 
 
 class System:
-    def __init__(self):
-        self.env = Environment(lim_day=100)
+    def __init__(self, seed=None):
+        self.seed = CURRENT_SEED if seed is None else int(seed)
+        apply_run_seed(self.seed)
+        self.env = Environment(name=f"seed_{self.seed}", lim_day=100)
         for key in enterprise_add_list:
             config = copy.deepcopy(enterprise_config)
             config.name = key
@@ -140,8 +152,8 @@ class System:
     def run(self):
 
         for episode in range(10000):
-            # if self.epiday > 200000 and episode % 100 == 0:
-            #     break
+            if self.epiday > 200000 and episode % 100 == 0:
+                break
             state = self.env.reset()
             last_state = None
             last_action = None
@@ -271,13 +283,16 @@ class System:
 
 
 if __name__ == '__main__':
-    system = System()
-    system.run()
+    seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
+    for seed in seeds_to_run:
+        system = System(seed=seed)
+        system.run()
 
-    del system
-    gc.collect()
-    # 清空计算图
-    torch.nn.Module.dump_patches = True
-    torch.cuda.empty_cache()
+        if hasattr(system, 'env'):
+            system.env.finish()
+        del system
+        gc.collect()
+        torch.nn.Module.dump_patches = True
+        torch.cuda.empty_cache()
 
     # tf.reset_default_graph()

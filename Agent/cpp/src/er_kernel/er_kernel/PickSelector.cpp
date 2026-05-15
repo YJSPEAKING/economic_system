@@ -2,13 +2,32 @@
 #include "PickSelector.h"
 #include <sys/timeb.h>
 
-inline void set_rand_seed() {
+static bool g_use_fixed_seed = false;
+
+inline UINT32 make_time_seed() {
 	struct timeb T;
 	ftime(&T);
 #pragma warning(push)
 #pragma warning(disable: 4244)
 	UINT32 t = T.time * 1000 + T.millitm;
 #pragma warning(pop)
+	return t;
+}
+
+void set_er_rand_seed(INT32 seed) {
+	if (seed >= 0) {
+		g_use_fixed_seed = true;
+		srand((UINT32)seed);
+	}
+	else {
+		g_use_fixed_seed = false;
+		srand(make_time_seed());
+	}
+}
+
+void init_er_rand_seed() {
+	if (g_use_fixed_seed) return;
+	UINT32 t = make_time_seed();
 	srand(t);
 }
 
@@ -25,7 +44,7 @@ inline UINT64 rand_UINT64(UINT64 ceil = 0xffffffffffffffffULL) {
 
 PS_UniRand::PS_UniRand() {
 	pick_num = 0;
-	set_rand_seed();
+	init_er_rand_seed();
 }
 
 void PS_UniRand::select(BATCH_SIZE_T batch_size, LH_REC_T* hPICKs) {
