@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Cortex\\cpp\\src\\er_kernel\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Cortex\\cpp\\src\\er_kernel\\er_kernel\\PickSelector.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{6E0B8263-2113-4118-B8B5-E4211CC33393}|er_kernel\\er_kernel.vcxproj|solutionrelative:er_kernel\\PickSelector.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "PickSelector.cpp",
+              "DocumentMoniker": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Cortex\\cpp\\src\\er_kernel\\er_kernel\\PickSelector.cpp",
+              "RelativeDocumentMoniker": "er_kernel\\PickSelector.cpp",
+              "ToolTip": "D:\\\u798F\u5DDE\u5927\u5B66\\3.\u8BFE\u5916\\\u5B9E\u9A8C\\\u7ECF\u6D4E\u7CFB\u7EDFcleanclean\\\u7ECF\u6D4E\u7CFB\u7EDFclean\\Cortex\\cpp\\src\\er_kernel\\er_kernel\\PickSelector.cpp",
+              "RelativeToolTip": "er_kernel\\PickSelector.cpp",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAQAAAAZAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
+              "WhenOpened": "2026-05-14T02:40:50.195Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

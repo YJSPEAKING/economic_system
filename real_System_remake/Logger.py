@@ -346,10 +346,10 @@ class Logger:
         for i in range(start, end):
             count += day[i]
         res = count/100
-        if epi is None:
-            swanlab.log({'每百回合/存活天数': res})
-        else:
-            swanlab.log({'每百回合/存活天数': res}, step=epi // 100)
+        # if epi is None:
+        swanlab.log({'每百回合/存活天数': res})
+        # else:
+        #     swanlab.log({'每百回合/存活天数': res}, step=epi // 100)
 
         # 每百回合累计奖励
         #   enterprise
