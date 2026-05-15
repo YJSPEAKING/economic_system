@@ -53,6 +53,7 @@ enterprise_ddpg_config = Config(
     scope='',
     action_dim=4,
     action_bound=0.5,
+    var_drop_at=1024,
     var_stable_at=stable_at,
     var_end_at=end_at,
     learning_rate_actor=1e-3,
@@ -60,7 +61,11 @@ enterprise_ddpg_config = Config(
     learning_rate_decay=1,
     random_seed=184,   # 传入 >= 0 的数，彻底锁死 C++ 的随机性；传入 -1，底层就会根据系统毫秒时间完全随机
     batch_size=1024,
-    memory_capacity=80000,
+    memory_capacity=200000,
+    learn_start_steps=1024,
+    gail_reward_weight=2.0,
+    gail_warmup_steps=5000,
+    disc_update_ratio=1,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -78,6 +83,7 @@ bank_ddpg_config = Config(
     scope='',
     action_dim=2,
     action_bound=0.5,
+    var_drop_at=1024,
     var_stable_at=stable_at,
     var_end_at=end_at,
     learning_rate_actor=1e-3,
@@ -85,7 +91,8 @@ bank_ddpg_config = Config(
     learning_rate_decay=1,
     random_seed=184,
     batch_size=1024,
-    memory_capacity=80000,
+    memory_capacity=200000,
+    learn_start_steps=1024,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -152,7 +159,7 @@ class System:
     def run(self):
 
         for episode in range(10000):
-            if self.epiday > 200000 and episode % 100 == 0:
+            if self.epiday > 180000 and episode % 100 == 0:
                 break
             state = self.env.reset()
             last_state = None

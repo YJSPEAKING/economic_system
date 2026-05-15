@@ -385,6 +385,61 @@ class Logger:
         else:
             res = count / 100
         swanlab.log({'每百回合/累计奖励/银行': res})
+        self._log_learning_speed_metrics(day, epi)
+
+    def _moving_average(self, values, window):
+        if len(values) < window:
+            return []
+        count = sum(values[:window])
+        res = [count / window]
+        for i in range(window, len(values)):
+            count += values[i] - values[i - window]
+            res.append(count / window)
+        return res
+
+    def _first_reach_episode(self, ma_values, window, threshold):
+        for i, value in enumerate(ma_values):
+            if value >= threshold:
+                return i + window
+        return -1
+
+    def _linear_slope(self, values):
+        n = len(values)
+        if n < 2:
+            return 0
+        x_mean = (n - 1) / 2
+        y_mean = sum(values) / n
+        denominator = sum((i - x_mean) ** 2 for i in range(n))
+        if denominator == 0:
+            return 0
+        numerator = sum((i - x_mean) * (values[i] - y_mean) for i in range(n))
+        return numerator / denominator
+
+    def _log_learning_speed_metrics(self, day, epi=None):
+        if len(day) < 100:
+            return
+        ma100 = self._moving_average(day, 100)
+        current_epi = len(day) if epi is None else epi
+        early_window = min(1000, len(day))
+        early_days = day[:early_window]
+        recent_ma = ma100[-min(5, len(ma100)):]
+
+        metrics = {
+            '学习速度/前1000回合AUC_存活天数': sum(early_days),
+            '学习速度/前1000回合平均存活天数': sum(early_days) / early_window,
+            '学习速度/前1000回合归一化AUC': sum(early_days) / (early_window * 99),
+            '学习速度/百回合均值早期斜率': self._linear_slope(ma100[:min(10, len(ma100))]),
+            '学习速度/当前百回合均值': recent_ma[-1],
+            '学习速度/历史最佳百回合均值': max(ma100),
+            '学习速度/达到80天所需回合': self._first_reach_episode(ma100, 100, 80),
+            '学习速度/达到90天所需回合': self._first_reach_episode(ma100, 100, 90),
+        }
+        if len(recent_ma) > 1:
+            metrics['学习速度/最近百回合均值斜率'] = self._linear_slope(recent_ma)
+        if epi is None:
+            swanlab.log(metrics)
+        else:
+            swanlab.log(metrics, step=current_epi // 100)
 
 
     def output_discount(self,target:str,data_name:str, start_at:int = 0, path:str = None, type:str = 'finish',agent_type:str = 'enterprise'):

@@ -110,6 +110,10 @@ class TD3(object):
         self.GAMMA = config.REWARD_GAMMA
         self.TAU = config.SOFT_REPLACE_TAU
         self.BATCH_SIZE = config.BATCH_SIZE
+        self.learn_start_steps = getattr(config, 'LEARN_START_STEPS', self.BATCH_SIZE)
+        self.gail_reward_weight = getattr(config, 'GAIL_REWARD_WEIGHT', 2.0)
+        self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
+        self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
         # self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.a_dim))
@@ -234,9 +238,17 @@ class TD3(object):
         return "_______________________________________@(@*#(@#*( " + str(self.pointer) + " " + str(
             self.var) + " " + str(self.show_lar_a) + "_______________________________24$@A#@$"
 
+    def _make_not_done_mask(self, batch, next_state):
+        seq_len_next = np.array(batch[5]).reshape(-1, 1)
+        not_done = (seq_len_next > 0).astype(np.float32)
+        next_state_flat = np.array(next_state).reshape(-1, self.s_dim)
+        zero_next_state = np.all(np.isclose(next_state_flat, 0.0), axis=1, keepdims=True)
+        not_done[zero_next_state] = 0.0
+        return not_done
+
     def learn(self):
 
-        if self.pointer < 3000:
+        if self.pointer < self.learn_start_steps:
             return 0
         self.update_cnt += 1
         if self.pointer > 8000 and self.pointer%100 == 0:
@@ -244,6 +256,8 @@ class TD3(object):
 
         # 从replay buffer（通过memory调用）中随机采样的样本数据
         b_M = self.memory.sample(self.BATCH_SIZE)
+        if b_M is None:
+            return 0
         # b_M = self.memory.sample(2)
         # 数据处理（归一化） ，b_s_rm,b_s__rm 当前状态和下一个状态的处理后的观测数据
         if self.is_rms:
@@ -257,18 +271,21 @@ class TD3(object):
         # 根据网络设定获取当前状态b_s，动作b_a，奖励b_r，下一个状态b_s_的数据，进行数据处理
         b_a = np.array(b_M[1]).reshape(-1, self.a_dim)
         b_r = b_M[2].reshape(-1, 1)
+        b_not_done = self._make_not_done_mask(b_M, b_s__rm)
 
         # 🛡️ 强行转换为 Tensor 并切断一切图联系 (物理隔离)
         b_s_tensor = torch.as_tensor(b_s, dtype=torch.float32, device=device).detach()
         b_a_tensor = torch.as_tensor(b_a, dtype=torch.float32, device=device)
         b_s_ = torch.as_tensor(b_s__rm.reshape(-1, self.s_dim), dtype=torch.float32, device=device).detach()
         b_r_tensor = torch.as_tensor(b_r, dtype=torch.float32, device=device).detach()
+        b_not_done_tensor = torch.as_tensor(b_not_done, dtype=torch.float32, device=device).detach()
 
 
         # 根据当前训练步数（pointer）计算Critic和Actor网络的学习率lr_c，lr_a
         # 其实没什么用
-        self.lr_a = max(self.LR_A_STABLE, self.LR_A * np.power(self.LR_DECAY, ((self.pointer - 3000) / self.LR_DECAY_TIME)))
-        self.lr_c = max(self.LR_C_STABLE, self.LR_C * np.power(self.LR_DECAY, ((self.pointer - 3000) / self.LR_DECAY_TIME)))
+        train_age = max(0, self.pointer - self.learn_start_steps)
+        self.lr_a = max(self.LR_A_STABLE, self.LR_A * np.power(self.LR_DECAY, (train_age / self.LR_DECAY_TIME)))
+        self.lr_c = max(self.LR_C_STABLE, self.LR_C * np.power(self.LR_DECAY, (train_age / self.LR_DECAY_TIME)))
         self.show_lar_a = self.lr_a
 
         if (not tranLock) or self.pointer < self.var_end_at:
@@ -277,7 +294,7 @@ class TD3(object):
             # 🚀 阶段三：判别器在线对抗更新 (加强版 - 增加更新步数比)
             # ==========================================
             # 设置步数比 n:1，这里 n=3 代表判别器学3次，Actor/Critic才学1次
-            disc_update_ratio = 3
+            disc_update_ratio = self.disc_update_ratio
 
             if hasattr(self, 'gail_disc') and hasattr(self, 'sample_expert'):
                 # 开启循环“加练”模式
@@ -334,7 +351,8 @@ class TD3(object):
                     dynamic_r_int = torch.sigmoid(disc_logits)
 
                     # 此时的融合权重 w_gail。建议从 1.0 或 2.0 开始试。
-                    w_gail = 10.5
+                    gail_scale = min(1.0, train_age / self.gail_warmup_steps)
+                    w_gail = self.gail_reward_weight * gail_scale
                     b_r_tensor_fused = b_r_tensor + w_gail * dynamic_r_int
                 # ==========================================
 
@@ -343,7 +361,7 @@ class TD3(object):
                 target_Q = torch.min(target_Q1, target_Q2)
 
                 # 🎯 使用融合了【实时判别器打分】和【真实环境利润】的混合奖励去更新 Critic！
-                target_Q = b_r_tensor_fused + self.GAMMA * target_Q
+                target_Q = b_r_tensor_fused + self.GAMMA * b_not_done_tensor * target_Q
 
             # 获得当前 batch 的 Q estimates
             current_Q1, current_Q2 = self.critic(b_s_tensor, b_a_tensor)
@@ -398,7 +416,7 @@ class TD3(object):
                 target_Q = torch.min(target_Q1, target_Q2)
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q * self.discount
                 #3.24
-                target_Q = torch.as_tensor(b_r, dtype=torch.float32, device=device) + self.GAMMA * target_Q
+                target_Q = torch.as_tensor(b_r, dtype=torch.float32, device=device) + self.GAMMA * b_not_done_tensor * target_Q
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q
             # 获得当前batch Q estimates
             current_Q1,current_Q2 = self.critic(b_s,b_a)

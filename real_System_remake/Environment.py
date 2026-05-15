@@ -24,7 +24,7 @@ swanlab_config = {
         'learning_rate_critic': 2e-3,
         'learning_rate_decay': 1,
         'random_seed': 184,
-        'memory_capacity': 80000
+        'memory_capacity': 200000
     },
     'enterprise_ddpg_config': {
         'smooth_noise': 0.01,
@@ -32,7 +32,7 @@ swanlab_config = {
         'learning_rate_critic': 2e-3,
         'learning_rate_decay': 1,
         'random_seed': 184,
-        'memory_capacity': 80000
+        'memory_capacity': 200000
     },
     'attention_config': {
         'nums_heads': 4
@@ -51,7 +51,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="在线GAIL+强化学习v1.10，w_gail = 10.5，外部设定多个seeds",
+                         notes="在线GAIL+强化学习v1.12，gail_reward_weight = 2.0",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
