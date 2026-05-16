@@ -9,7 +9,20 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import time
 import shutil
 from pandas import DataFrame
-import swanlab
+try:
+    import swanlab
+except ModuleNotFoundError:
+    class _NoSwanLab:
+        def init(self, *args, **kwargs):
+            return None
+
+        def log(self, *args, **kwargs):
+            return None
+
+        def finish(self, *args, **kwargs):
+            return None
+
+    swanlab = _NoSwanLab()
 
 plt.rcParams["font.sans-serif"]=["SimHei"] #设置字体
 plt.rcParams["axes.unicode_minus"]=False #该语句解决图像中的“-”负号的乱码问题

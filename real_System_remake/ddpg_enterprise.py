@@ -6,8 +6,7 @@ enterprise._run_enterpeise(enterprise_mod:int, state:list)//传入经营的企�
 
 import warnings
 
-from Agent import Config
-from Cortex import *
+from Agent.Config import Config
 # from Cortex.ActorDQN import *
 # from Cortex.Common.Network import leaky_relu
 # from Cortex.Common.Network import AdamOptimizer

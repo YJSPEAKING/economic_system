@@ -3,14 +3,25 @@
 from real_System_remake.Enterprise import Enterprise
 from real_System_remake.Bank import Bank
 from real_System_remake.Market import Market
-from real_System_remake.ddpg_enterprise import enterprise_nnu
-from real_System_remake.ddpg_bank import bank_nnu
 from real_System_remake.Logger import Logger
 import copy
 import random
 from real_System_remake.Enterprise_config import Enterprise_config
 from real_System_remake.Bank_config import Bank_config
-import swanlab
+try:
+    import swanlab
+except ModuleNotFoundError:
+    class _NoSwanLab:
+        def init(self, *args, **kwargs):
+            return None
+
+        def log(self, *args, **kwargs):
+            return None
+
+        def finish(self, *args, **kwargs):
+            return None
+
+    swanlab = _NoSwanLab()
 import time
 import pandas as pd
 import os
@@ -43,11 +54,12 @@ swanlab_config = {
 class Environment:
     def __init__(self, name: str = None,
                  lim_day: int = 100,
-                 logger_path: str = None):
+                 logger_path: str = None,
+                 use_swanlab: bool = True):
         if name is None:
             # 如果用户没有提供名称，就根据当前时间自动生成一个
             name = "Oneplus" + time.strftime("%Y%m%d_%H%M%S")
-        self.use_swanlab = True
+        self.use_swanlab = use_swanlab
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
