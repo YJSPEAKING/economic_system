@@ -39,6 +39,11 @@ class Bank:
         self.fund_rate = config.fund_rate           # 储备金率，银行总共可以放出的贷款额度为 sum(bond) <= fund_rate * (fund + money)
         self.fund_increase = config.fund_increase   # 储备金每回合增长，即 fund = fund * (1 + fund_increase) ^ day
         self.action_function = config.action_function
+        self.reward_profit_weight = getattr(config, 'reward_profit_weight', 1.0)
+        self.reward_credit_weight = getattr(config, 'reward_credit_weight', 0.5)
+        self.reward_survival_weight = getattr(config, 'reward_survival_weight', 0.05)
+        self.reward_unmet_credit_weight = getattr(config, 'reward_unmet_credit_weight', 0.2)
+        self.reward_default_weight = getattr(config, 'reward_default_weight', 1.0)
         self.total_reward = {'WNDB': 0, }           # 如果要更改奖励就在这里改
         self.reward_decay = 0.95
         self.step = 0
@@ -154,10 +159,15 @@ class Bank:
 
 
     def custom_reward(self):
-        '''
-        self.reward['WNDB'] = self.profit/1
-        '''
-        self.reward['WNDB'] = self.profit/100
+        interest_reward = self.reward_profit_weight * (self.profit / 100)
+        credit_support = self.reward_credit_weight * (sum(self.real_WNDB.values()) / 100)
+        unmet_credit = sum(max(self.WNDB[key] - self.real_WNDB[key], 0) for key in self.WNDB)
+        unmet_penalty = self.reward_unmet_credit_weight * (unmet_credit / 100)
+        alive_count = sum(0 if target.is_falled() else 1 for target in self.observation.values())
+        survival_reward = self.reward_survival_weight * alive_count
+        default_exposure = sum(self.bond[key] for key, target in self.observation.items() if target.is_falled())
+        default_penalty = self.reward_default_weight * (default_exposure / 100)
+        self.reward['WNDB'] = interest_reward + credit_support + survival_reward - unmet_penalty - default_penalty
 
 
     def get_reward(self):
@@ -170,10 +180,8 @@ class Bank:
     def get_fail_reward(self):
         fail_reward = {'WNDB':0}
         decay = self.reward_decay ** self.step
-        # for key in self.observation:
-        #     if self.observation[key].is_falled():
-        #         fail_reward['WNDB'] -= self.bond[key]
-        fail_reward['WNDB'] = -10
+        default_exposure = sum(self.bond[key] for key, target in self.observation.items() if target.is_falled())
+        fail_reward['WNDB'] = -10 - self.reward_default_weight * (default_exposure / 100)
         self.total_reward['WNDB'] += fail_reward['WNDB'] * decay
         return fail_reward
 

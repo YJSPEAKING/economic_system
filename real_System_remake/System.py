@@ -119,7 +119,12 @@ bank_config = Bank_config(
     fund=2000,
     fund_rate=1,
     fund_increase=0.1,
-    debt_time=5
+    debt_time=5,
+    reward_profit_weight=1.0,
+    reward_credit_weight=0.5,
+    reward_survival_weight=0.05,
+    reward_unmet_credit_weight=0.2,
+    reward_default_weight=1.0
 )
 
 enterprise_config = Enterprise_config(
@@ -290,7 +295,8 @@ class System:
 
 
 if __name__ == '__main__':
-    seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
+    # seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
+    seeds_to_run = [291]
     for seed in seeds_to_run:
         system = System(seed=seed)
         system.run()
