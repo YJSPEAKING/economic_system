@@ -1,8 +1,8 @@
-import copy
 import csv
 import os
 import random
 import sys
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -12,17 +12,16 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from real_System_remake.Environment import Environment
 from real_System_remake.Bank_config import Bank_config
 from real_System_remake.Enterprise_config import Enterprise_config
+from real_System_remake.Environment import Environment
 
 
 TARGET_AGENT = "production1"
+DEFAULT_SEED = 184
+DEFAULT_AUTO_POLICY = "td3"
 ACTION_NAMES = ["WNDF", "K", "L", "price"]
-POLICY_LABEL_TO_VALUE = {
-    "TD3自动策略": "td3",
-    "固定策略": "fixed",
-}
+ACTION_DISPLAY_NAMES = ["申请贷款金额", "K采购需求", "L采购需求", "销售价格"]
 ENTERPRISE_ADD_LIST = {
     "production1": "K",
     "consumption1": "L",
@@ -56,25 +55,25 @@ STATE_FIELDS = [
     ("今天待还利息", 10),
     ("上一天K采购需求", 10),
     ("上一天L采购需求", 10),
-    ("上一天生产企业1向生产企业1购买价格", 10),
-    ("上一天生产企业1向生产企业1购买数量", 10),
-    ("上一天生产企业1向消费企业1购买价格", 10),
-    ("上一天生产企业1向消费企业1购买数量", 10),
-    ("上一天生产企业1向生产第三方市场购买价格", 10),
-    ("上一天生产企业1向生产第三方市场购买数量", 10),
-    ("上一天生产企业1向消费第三方市场购买价格", 10),
-    ("上一天生产企业1向消费第三方市场购买数量", 10),
-    ("上一天消费企业1向生产企业1购买价格", 10),
-    ("上一天消费企业1向生产企业1购买数量", 10),
-    ("上一天消费企业1向消费企业1购买价格", 10),
-    ("上一天消费企业1向消费企业1购买数量", 10),
-    ("上一天消费企业1向生产第三方市场购买价格", 10),
-    ("上一天消费企业1向生产第三方市场购买数量", 10),
-    ("上一天消费企业1向消费第三方市场购买价格", 10),
-    ("上一天消费企业1向消费第三方市场购买数量", 10),
-    ("今天K商品报价：生产企业1", 10),
+    ("上一天生产企业向生产企业购买价格", 10),
+    ("上一天生产企业向生产企业购买数量", 10),
+    ("上一天生产企业向消费企业购买价格", 10),
+    ("上一天生产企业向消费企业购买数量", 10),
+    ("上一天生产企业向生产第三方市场购买价格", 10),
+    ("上一天生产企业向生产第三方市场购买数量", 10),
+    ("上一天生产企业向消费第三方市场购买价格", 10),
+    ("上一天生产企业向消费第三方市场购买数量", 10),
+    ("上一天消费企业向生产企业购买价格", 10),
+    ("上一天消费企业向生产企业购买数量", 10),
+    ("上一天消费企业向消费企业购买价格", 10),
+    ("上一天消费企业向消费企业购买数量", 10),
+    ("上一天消费企业向生产第三方市场购买价格", 10),
+    ("上一天消费企业向生产第三方市场购买数量", 10),
+    ("上一天消费企业向消费第三方市场购买价格", 10),
+    ("上一天消费企业向消费第三方市场购买数量", 10),
+    ("今天K商品报价：生产企业", 10),
     ("今天K商品报价：生产第三方市场", 10),
-    ("今天L商品报价：消费企业1", 10),
+    ("今天L商品报价：消费企业", 10),
     ("今天L商品报价：消费第三方市场", 10),
 ]
 
@@ -90,8 +89,16 @@ def display_state_value(index, value):
     return value * scale
 
 
+def raw_state_value(state, index):
+    return display_state_value(index, state[index])
+
+
 def format_number(value):
-    return f"{value:.6g}"
+    if value is None:
+        return "-"
+    if abs(value) >= 1000:
+        return f"{value:,.2f}"
+    return f"{value:.4g}"
 
 
 def seed_everything(seed):
@@ -157,13 +164,107 @@ def make_ddpg_config(scope, action_dim, action_bound, state_dim, seed):
     )
 
 
+def aggregate_purchase(state, start):
+    prices = [raw_state_value(state, start), raw_state_value(state, start + 2),
+              raw_state_value(state, start + 4), raw_state_value(state, start + 6)]
+    nums = [raw_state_value(state, start + 1), raw_state_value(state, start + 3),
+            raw_state_value(state, start + 5), raw_state_value(state, start + 7)]
+    total_num = sum(nums)
+    if total_num <= 0:
+        return 0.0, 0.0
+    avg_price = sum(price * num for price, num in zip(prices, nums)) / total_num
+    return total_num, avg_price
+
+
+def market_min(values):
+    positives = [value for value in values if value > 0]
+    return min(positives) if positives else 0.0
+
+
+def display_rows(state, day=None):
+    is_first_day = day == 1
+    previous_label = "开局参考" if is_first_day else "上一天"
+    sales_label = "开局时生产企业可参考的K销售数量" if is_first_day else "上一天生产企业卖出的K数量"
+    output_label = "开局时生产企业可参考的K生产数量" if is_first_day else "上一天生产企业生产出的K数量"
+    production_purchase_label = "开局时生产企业可参考的K数量" if is_first_day else "上一天生产企业实际买到的K数量"
+    consumer_purchase_label = "开局时消费企业可参考的商品总量" if is_first_day else "上一天消费企业购买到的商品总量"
+    consumer_price_label = "开局时消费企业可参考的平均单价" if is_first_day else "上一天消费企业购买商品的平均单价"
+    production_price_label = "开局时生产企业可参考的原料平均单价" if is_first_day else "上一天生产企业购买原料的平均单价"
+    production_num, production_avg = aggregate_purchase(state, 13)
+    consumer_num, consumer_avg = aggregate_purchase(state, 21)
+    k_prices = [raw_state_value(state, 29), raw_state_value(state, 30)]
+    l_prices = [raw_state_value(state, 31), raw_state_value(state, 32)]
+    cash = raw_state_value(state, 0)
+    payback = raw_state_value(state, 9)
+    interest = raw_state_value(state, 10)
+    k_need = raw_state_value(state, 11)
+    l_need = raw_state_value(state, 12)
+    price = raw_state_value(state, 6)
+    k_market = market_min(k_prices)
+    l_market = market_min(l_prices)
+    return [
+        ("贷款参考", "当前现金：申请贷款金额不能超过这个数", cash, "cash"),
+        ("贷款参考", "今天需要还给银行的钱：本金+利息", payback + interest, "debt_due"),
+        ("贷款参考", "目前还欠银行的钱", raw_state_value(state, 2), "debt"),
+        ("采购K参考", "K是生产企业生产产品时需要购买的原料之一；当前计划购买K数量", k_need, "k_need"),
+        ("采购K参考", "今天市场上K的最低单价", k_market, "k_market"),
+        ("采购K参考", production_purchase_label, production_num, "purchase_num"),
+        ("采购L参考", "L是生产企业生产产品时需要购买的原料之一；当前计划购买L数量", l_need, "l_need"),
+        ("采购L参考", "今天市场上L的最低单价", l_market, "l_market"),
+        ("K销售参考", "生产企业出售产品K的当前单价", price, "price"),
+        ("K销售参考", sales_label, raw_state_value(state, 3), "sales"),
+        ("K销售参考", output_label, raw_state_value(state, 4), "output"),
+        ("市场背景", consumer_purchase_label, consumer_num, "consumer_num"),
+        ("市场背景", consumer_price_label, consumer_avg, "consumer_price"),
+        ("市场背景", production_price_label, production_avg, "purchase_price"),
+    ]
+
+
+def row_change_tag(key, value, previous_state):
+    if previous_state is None:
+        return ()
+    previous = {row[3]: row[2] for row in display_rows(previous_state)}
+    if key not in previous:
+        return ()
+    old = previous[key]
+    if abs(value - old) < 1e-9:
+        return ()
+    good_when_up = {"cash", "stock", "sales", "output"}
+    bad_when_up = {"debt", "payback", "interest", "purchase_price", "k_market", "l_market"}
+    if key in good_when_up:
+        return ("change_good",) if value > old else ("change_bad",)
+    if key in bad_when_up:
+        return ("change_bad",) if value > old else ("change_good",)
+    return ()
+
+
+def risk_tag(key, value, state):
+    cash = raw_state_value(state, 0)
+    if key == "cash":
+        if value < 50:
+            return ("risk_high",)
+        if value < 200:
+            return ("risk_medium",)
+    if key == "debt":
+        if cash > 0 and value > cash * 3:
+            return ("risk_high",)
+        if cash > 0 and value > cash:
+            return ("risk_medium",)
+    if key in {"payback", "interest", "debt_due"}:
+        if cash > 0 and value > cash:
+            return ("risk_high",)
+        if cash > 0 and value > cash * 0.5:
+            return ("risk_medium",)
+    return ()
+
+
 class HumanProductionCollector:
     def __init__(
         self,
-        seed=184,
+        seed=DEFAULT_SEED,
         output_path=DEFAULT_OUTPUT,
         meta_output_path=DEFAULT_META_OUTPUT,
-        auto_policy="td3",
+        auto_policy=DEFAULT_AUTO_POLICY,
         participant_id="anonymous",
     ):
         self.seed = int(seed)
@@ -177,7 +278,6 @@ class HumanProductionCollector:
         self.auto_agents = {}
         self.rows_saved = 0
         self.history = []
-
         seed_everything(self.seed)
         self._build_env()
 
@@ -189,19 +289,10 @@ class HumanProductionCollector:
             use_swanlab=False,
         )
         for key, output_name in ENTERPRISE_ADD_LIST.items():
-            config = make_enterprise_config(key, output_name)
-            self.env.add_enterprise_agent(config=config)
+            self.env.add_enterprise_agent(make_enterprise_config(key, output_name))
         self.env.add_bank(make_bank_config())
-        self.env.add_enterprise_thirdmarket(
-            name="production_thirdMarket",
-            output_name="K",
-            price=100,
-        )
-        self.env.add_enterprise_thirdmarket(
-            name="consumption_thirdMarket",
-            output_name="L",
-            price=100,
-        )
+        self.env.add_enterprise_thirdmarket("production_thirdMarket", "K", 100)
+        self.env.add_enterprise_thirdmarket("consumption_thirdMarket", "L", 100)
         self.env.init()
 
     def start_episode(self):
@@ -217,42 +308,27 @@ class HumanProductionCollector:
     def _get_auto_agent(self, key):
         if self.auto_policy == "fixed":
             return None
-
         if key in self.auto_agents:
             return self.auto_agents[key]
-
         if key in self.env.get_enterprise_execute():
             from real_System_remake.ddpg_enterprise import enterprise_nnu
 
-            config = make_ddpg_config(
-                scope=key,
-                action_dim=4,
-                action_bound=0.5,
-                state_dim=len(self.state[key]),
-                seed=self.seed,
-            )
+            config = make_ddpg_config(key, 4, 0.5, len(self.state[key]), self.seed)
             agent = enterprise_nnu(config)
         else:
             from real_System_remake.ddpg_bank import bank_nnu
 
-            config = make_ddpg_config(
-                scope=key,
-                action_dim=2,
-                action_bound=0.5,
-                state_dim=len(self.state[key]),
-                seed=self.seed,
-            )
+            config = make_ddpg_config(key, 2, 0.5, len(self.state[key]), self.seed)
             agent = bank_nnu(config)
-
         self.auto_agents[key] = agent
         return agent
 
-    def step(self, human_action):
-        human_action = np.array(human_action, dtype=float)
-        if human_action.shape[0] != len(ACTION_NAMES):
-            raise ValueError("production1 action 必须是4个数。")
+    def step(self, model_action, human_values, decision_seconds):
+        model_action = np.array(model_action, dtype=float)
+        if model_action.shape[0] != len(ACTION_NAMES):
+            raise ValueError("生产企业动作必须是4个数。")
 
-        action = {TARGET_AGENT: human_action}
+        action = {TARGET_AGENT: model_action}
         state_before_action = self.current_state().copy()
         day_before_action = self.env.day
 
@@ -262,40 +338,33 @@ class HumanProductionCollector:
             if self.auto_policy == "fixed":
                 action[key] = FIXED_ENTERPRISE_ACTION.copy()
             else:
-                action[key] = self._get_auto_agent(key).run_enterprise(
-                    self.state[key],
-                    self.new_ep,
-                )
+                action[key] = self._get_auto_agent(key).run_enterprise(self.state[key], self.new_ep)
 
         for key in self.env.get_bank_execute():
             if self.auto_policy == "fixed":
                 action[key] = FIXED_BANK_ACTION.copy()
             else:
-                action[key] = self._get_auto_agent(key).run_bank(
-                    self.state[key],
-                    self.new_ep,
-                )
+                action[key] = self._get_auto_agent(key).run_bank(self.state[key], self.new_ep)
 
         self.history.append(
             {
                 "day": day_before_action,
                 "state": state_before_action,
-                "action": human_action.copy(),
+                "action": model_action.copy(),
+                "human_values": list(human_values),
             }
         )
-        self._save_row(state_before_action, human_action, day_before_action)
+        self._save_row(state_before_action, model_action, human_values, day_before_action, decision_seconds)
         self.env.step(action)
         next_state, reward, done = self.env.observe()
-
         self.state = next_state
         self.new_ep = False
         return done, reward
 
-    def _save_row(self, state, action, day):
+    def _save_row(self, state, model_action, human_values, day, decision_seconds):
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
         with open(self.output_path, "a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([*state.tolist(), *action.tolist()])
+            csv.writer(file).writerow([*state.tolist(), *model_action.tolist()])
 
         meta_exists = os.path.exists(self.meta_output_path)
         with open(self.meta_output_path, "a", newline="", encoding="utf-8-sig") as file:
@@ -308,8 +377,10 @@ class HumanProductionCollector:
                         "episode",
                         "day",
                         "auto_policy",
+                        "decision_seconds",
                         *[f"state_{i}_{state_label(i)}" for i in range(len(state))],
-                        *[f"action_{name}" for name in ACTION_NAMES],
+                        *[f"human_{name}" for name in ACTION_DISPLAY_NAMES],
+                        *[f"model_action_{name}" for name in ACTION_NAMES],
                     ]
                 )
             writer.writerow(
@@ -319,8 +390,10 @@ class HumanProductionCollector:
                     self.env.episode,
                     day,
                     self.auto_policy,
+                    round(decision_seconds, 3),
                     *state.tolist(),
-                    *action.tolist(),
+                    *human_values,
+                    *model_action.tolist(),
                 ]
             )
         self.rows_saved += 1
@@ -329,110 +402,125 @@ class HumanProductionCollector:
 class CollectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("生产企业1 人类专家数据采集")
-        self.geometry("1220x840")
+        self.title("生产企业人类专家数据采集")
+        self.geometry("1220x860")
         self.collector = None
-        self.action_vars = [tk.StringVar(value="0.0") for _ in ACTION_NAMES]
-        self.action_entries = []
-        self.preview_vars = [tk.StringVar(value="-") for _ in ACTION_NAMES]
         self.participant_var = tk.StringVar(value="anonymous")
-        self.seed_var = tk.StringVar(value="184")
-        self.auto_policy_var = tk.StringVar(value="TD3自动策略")
         self.output_var = tk.StringVar(value=DEFAULT_OUTPUT)
         self.meta_output_var = tk.StringVar(value=DEFAULT_META_OUTPUT)
-        self.status_var = tk.StringVar(value="点击“开始采集”初始化环境。")
+        self.status_var = tk.StringVar(value="请阅读任务说明，然后点击“开始采集”。")
+        self.action_vars = [tk.StringVar(value="") for _ in ACTION_NAMES]
+        self.action_entries = []
+        self.adjust_popup = None
+        self.suppress_adjust_popup = False
+        self.action_hint_vars = [tk.StringVar(value="-") for _ in ACTION_NAMES]
         self.viewing_previous = False
         self.draft_action_values = None
-
+        self.session_started_at = None
+        self.current_decision_started_at = None
+        self.decision_durations = []
+        self.busy = False
         self._build_widgets()
+        self._set_action_entries_state(tk.DISABLED)
 
     def _build_widgets(self):
         top = ttk.Frame(self, padding=10)
         top.pack(fill=tk.X)
 
-        ttk.Label(top, text="参与者").pack(side=tk.LEFT)
-        ttk.Entry(top, textvariable=self.participant_var, width=14).pack(side=tk.LEFT, padx=(6, 16))
-        ttk.Label(top, text="Seed").pack(side=tk.LEFT)
-        ttk.Entry(top, textvariable=self.seed_var, width=8).pack(side=tk.LEFT, padx=(6, 16))
-        ttk.Label(top, text="非人工主体策略").pack(side=tk.LEFT)
-        ttk.Combobox(
-            top,
-            textvariable=self.auto_policy_var,
-            values=tuple(POLICY_LABEL_TO_VALUE.keys()),
-            state="readonly",
-            width=12,
-        ).pack(side=tk.LEFT, padx=(6, 16))
+        ttk.Label(top, text="参与者编号（可选）").pack(side=tk.LEFT)
+        ttk.Entry(top, textvariable=self.participant_var, width=18).pack(side=tk.LEFT, padx=(6, 16))
         ttk.Label(top, text="专家数据").pack(side=tk.LEFT)
-        ttk.Entry(top, textvariable=self.output_var, width=48).pack(side=tk.LEFT, padx=(6, 16))
-        ttk.Button(top, text="开始采集", command=self.start_collection).pack(side=tk.LEFT)
+        ttk.Entry(top, textvariable=self.output_var, width=50).pack(side=tk.LEFT, padx=(6, 16))
+        self.start_btn = ttk.Button(top, text="开始采集", command=self.start_collection)
+        self.start_btn.pack(side=tk.LEFT)
 
         path_frame = ttk.Frame(self, padding=(10, 0, 10, 6))
         path_frame.pack(fill=tk.X)
         ttk.Label(path_frame, text="带表头记录").pack(side=tk.LEFT)
-        ttk.Entry(path_frame, textvariable=self.meta_output_var, width=88).pack(side=tk.LEFT, padx=(6, 16))
+        ttk.Entry(path_frame, textvariable=self.meta_output_var, width=92).pack(side=tk.LEFT, padx=(6, 16))
 
-        help_text = (
-            "任务目标：请根据生产企业1今天可见的信息，选择今天的贷款、采购和价格动作，尽量让企业存活更久并保持经营稳定。\n"
-            "非人工主体策略：TD3自动策略更接近当前实验系统，会让消费企业1和银行自动决策；"
-            "固定策略只用于缺少模型依赖时兜底，可能明显改变存活天数。"
+        self.compact_help = ttk.Label(
+            self,
+            text="任务目标：根据生产企业今天可见的信息，填写贷款、采购和价格，让企业尽量存活更久并保持经营稳定。",
+            foreground="#555",
+            wraplength=1160,
         )
-        ttk.Label(self, text=help_text, foreground="#555", wraplength=1160).pack(
-            fill=tk.X,
-            padx=12,
-            pady=(0, 8),
-        )
+
+        self.intro_frame = ttk.Frame(self, padding=30)
+        self.intro_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        ttk.Label(
+            self.intro_frame,
+            text="任务目标",
+            font=("Microsoft YaHei", 20, "bold"),
+        ).pack(pady=(60, 16))
+        ttk.Label(
+            self.intro_frame,
+            text=(
+                "你将扮演“生产企业”的经营决策者。\n\n"
+                "每天系统会展示企业现金、库存、债务、还款压力、采购需求和市场报价等关键信息。"
+                "请填写今天希望申请的贷款金额、K/L采购需求和销售价格。"
+                "系统会自动把你的直观输入转换成模型需要的动作格式，并记录为专家数据。\n\n"
+                "目标不是追求某一天的最大收益，而是尽量让企业活得更久、经营更稳定。"
+            ),
+            font=("Microsoft YaHei", 12),
+            justify=tk.CENTER,
+            wraplength=760,
+        ).pack(pady=10)
+
+        self.main_frame = ttk.Frame(self)
 
         self.state_table = ttk.Treeview(
-            self,
-            columns=("idx", "name", "value"),
+            self.main_frame,
+            columns=("group", "name", "value", "change"),
             show="headings",
-            height=24,
+            height=17,
         )
-        self.state_table.heading("idx", text="#", anchor=tk.CENTER)
-        self.state_table.heading("name", text="生产企业1今天可见的信息", anchor=tk.CENTER)
-        self.state_table.heading("value", text="数值", anchor=tk.CENTER)
-        self.state_table.column("idx", width=60, anchor=tk.CENTER)
+        self.state_table.heading("group", text="类别", anchor=tk.CENTER)
+        self.state_table.heading("name", text="信息", anchor=tk.CENTER)
+        self.state_table.heading("value", text="参考数值", anchor=tk.CENTER)
+        self.state_table.heading("change", text="相对上一天", anchor=tk.CENTER)
+        self.state_table.column("group", width=150, anchor=tk.CENTER)
         self.state_table.column("name", width=520, anchor=tk.CENTER)
         self.state_table.column("value", width=180, anchor=tk.CENTER)
+        self.state_table.column("change", width=180, anchor=tk.CENTER)
         self.state_table.tag_configure("risk_high", background="#ffe0e0")
         self.state_table.tag_configure("risk_medium", background="#fff2c2")
+        self.state_table.tag_configure("change_good", background="#e1f5e6")
+        self.state_table.tag_configure("change_bad", background="#ffe6e6")
         self.state_table.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        action_frame = ttk.LabelFrame(self, text="输入生产企业1今日动作，建议范围 -0.5 到 0.5", padding=10)
+        action_frame = ttk.LabelFrame(self.main_frame, text="填写今天的决策", padding=10)
         action_frame.pack(fill=tk.X, padx=10)
-        action_descriptions = [
-            "贷款意愿：-0.5=不申请，0=约现金50%，0.5=约现金100%",
-            "K采购需求：0=保持，0.1=增加10%，-0.1=减少10%",
-            "L采购需求：0=保持，0.1=增加10%，-0.1=减少10%",
-            "价格调整：0=明天价格不变，0.1=明天涨价10%，-0.1=降价10%",
+        descriptions = [
+            "0=不申请贷款；最大值=当前现金",
+            "直接填写希望采购的K数量",
+            "直接填写希望采购的L数量",
+            "直接填写希望设置的销售价格",
         ]
-        for idx, name in enumerate(ACTION_NAMES):
+        for idx, name in enumerate(ACTION_DISPLAY_NAMES):
             ttk.Label(action_frame, text=name).grid(row=0, column=idx, sticky=tk.W)
-            entry = ttk.Entry(action_frame, textvariable=self.action_vars[idx], width=14, justify=tk.CENTER)
+            entry = ttk.Entry(action_frame, textvariable=self.action_vars[idx], width=16, justify=tk.CENTER)
             entry.grid(row=1, column=idx, padx=(0, 18), pady=(2, 4), sticky=tk.W)
-            self.action_vars[idx].trace_add("write", lambda *_: self._update_action_preview())
+            entry.bind("<FocusIn>", lambda event, i=idx: self._show_adjust_popup(i))
+            entry.bind("<FocusOut>", lambda event: self.after(120, self._hide_adjust_popup_if_focus_left))
+            self.action_vars[idx].trace_add("write", lambda *_: self._update_action_hints())
             self.action_entries.append(entry)
-            ttk.Label(action_frame, text=action_descriptions[idx], foreground="#555", wraplength=250).grid(
+            ttk.Label(action_frame, text=descriptions[idx], foreground="#555", wraplength=250).grid(
                 row=2,
                 column=idx,
                 padx=(0, 18),
                 sticky=tk.W,
             )
-            ttk.Label(action_frame, textvariable=self.preview_vars[idx], foreground="#005a8d", wraplength=250).grid(
+            ttk.Label(action_frame, textvariable=self.action_hint_vars[idx], foreground="#005a8d", wraplength=250).grid(
                 row=3,
                 column=idx,
                 padx=(0, 18),
                 sticky=tk.W,
             )
 
-        button_frame = ttk.Frame(self, padding=10)
+        button_frame = ttk.Frame(self.main_frame, padding=10)
         button_frame.pack(fill=tk.X)
-        self.prev_day_btn = ttk.Button(
-            button_frame,
-            text="查看上一天",
-            command=self.toggle_previous_day,
-            state=tk.DISABLED,
-        )
+        self.prev_day_btn = ttk.Button(button_frame, text="查看上一天", command=self.toggle_previous_day, state=tk.DISABLED)
         self.prev_day_btn.pack(side=tk.LEFT, padx=(0, 10))
         self.submit_btn = ttk.Button(
             button_frame,
@@ -451,165 +539,308 @@ class CollectorApp(tk.Tk):
         ttk.Label(button_frame, textvariable=self.status_var).pack(side=tk.LEFT, padx=10)
 
     def start_collection(self):
-        try:
-            self.collector = HumanProductionCollector(
-                seed=int(self.seed_var.get()),
-                output_path=self.output_var.get(),
-                meta_output_path=self.meta_output_var.get(),
-                auto_policy=POLICY_LABEL_TO_VALUE[self.auto_policy_var.get()],
-                participant_id=self.participant_var.get(),
-            )
-            self.collector.start_episode()
-        except Exception as exc:
-            messagebox.showerror("初始化失败", str(exc))
+        if self.collector is not None:
+            self.end_collection()
             return
+        self._run_busy("正在初始化环境...", self._start_collection_impl)
 
+    def _start_collection_impl(self):
+        self.collector = HumanProductionCollector(
+            seed=DEFAULT_SEED,
+            output_path=self.output_var.get(),
+            meta_output_path=self.meta_output_var.get(),
+            auto_policy=DEFAULT_AUTO_POLICY,
+            participant_id=self.participant_var.get(),
+        )
+        self.collector.start_episode()
+        self.session_started_at = time.perf_counter()
+        self.current_decision_started_at = time.perf_counter()
+        self.decision_durations = []
+        self.intro_frame.pack_forget()
+        self.compact_help.pack(fill=tk.X, padx=12, pady=(0, 8))
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        self.start_btn.config(text="结束采集")
         self.submit_btn.config(state=tk.NORMAL)
         self.prev_day_btn.config(state=tk.DISABLED)
         self.next_episode_btn.config(state=tk.DISABLED)
-        self.viewing_previous = False
+        self._set_action_entries_state(tk.NORMAL)
+        self._prefill_action_inputs()
         self._refresh_state()
-        self._update_action_preview()
-        self._set_status("环境已初始化，请输入 production1 今日动作。")
+        self._set_status("环境已初始化，请填写今天的决策。")
+
+    def end_collection(self):
+        self.submit_btn.config(state=tk.DISABLED)
+        self.prev_day_btn.config(state=tk.DISABLED)
+        self.next_episode_btn.config(state=tk.DISABLED)
+        self._set_action_entries_state(tk.DISABLED)
+        self.start_btn.config(state=tk.DISABLED, text="采集已结束")
+        self._set_status(f"采集已结束；共保存 {self.collector.rows_saved if self.collector else 0} 条专家数据。")
 
     def next_episode(self):
+        self._run_busy("正在开始下一回合...", self._next_episode_impl)
+
+    def _next_episode_impl(self):
         self.collector.start_episode()
+        self.current_decision_started_at = time.perf_counter()
         self.submit_btn.config(state=tk.NORMAL)
         self.prev_day_btn.config(state=tk.DISABLED)
         self.next_episode_btn.config(state=tk.DISABLED)
+        self._set_action_entries_state(tk.NORMAL)
         self.viewing_previous = False
+        self._prefill_action_inputs()
         self._refresh_state()
-        self._update_action_preview()
-        self._set_status("新回合已开始。")
+        self._set_status("新回合已开始，请填写今天的决策。")
+
+    def submit_action(self):
+        self._run_busy("系统正在进入下一天...", self._submit_action_impl)
+
+    def _submit_action_impl(self):
+        human_values = self._read_human_values()
+        model_action = self._human_to_model_action(human_values)
+        now = time.perf_counter()
+        decision_seconds = now - self.current_decision_started_at if self.current_decision_started_at else 0
+        self.decision_durations.append(decision_seconds)
+        done, _ = self.collector.step(model_action, human_values, decision_seconds)
+        if done:
+            self.submit_btn.config(state=tk.DISABLED)
+            self.prev_day_btn.config(state=tk.NORMAL)
+            self.next_episode_btn.config(state=tk.NORMAL)
+            self._set_action_entries_state(tk.DISABLED)
+            self._set_status(
+                f"本回合结束，存活 {self.collector.env.day} 天；已保存 {self.collector.rows_saved} 条专家数据。"
+            )
+            messagebox.showinfo("回合结束", f"生产企业本回合存活 {self.collector.env.day} 天。")
+        else:
+            self.current_decision_started_at = time.perf_counter()
+            self.prev_day_btn.config(state=tk.NORMAL)
+            self._prefill_action_inputs()
+            self._refresh_state()
+            self._set_status(f"已进入第 {self.collector.env.day} 天；已保存 {self.collector.rows_saved} 条专家数据。")
 
     def toggle_previous_day(self):
         if self.collector is None or not self.collector.history:
             return
-
         if not self.viewing_previous:
             self.draft_action_values = [var.get() for var in self.action_vars]
             snapshot = self.collector.history[-1]
-            for idx, value in enumerate(snapshot["action"]):
-                self.action_vars[idx].set(f"{value:.6g}")
+            for idx, value in enumerate(snapshot["human_values"]):
+                self.action_vars[idx].set(format_number(value))
             self._set_action_entries_state(tk.DISABLED)
-            self._update_action_preview(readonly=True)
             self.submit_btn.config(state=tk.DISABLED)
             self.prev_day_btn.config(text="返回今天")
             self.viewing_previous = True
             self._refresh_state(state=snapshot["state"], day=snapshot["day"], readonly=True)
-            self._set_status("正在查看上一天记录：这里只能查看，不能修改动作。")
+            self._set_status("正在查看上一天记录：这里只能查看，不能修改。")
         else:
-            if self.draft_action_values is not None:
-                for idx, value in enumerate(self.draft_action_values):
-                    self.action_vars[idx].set(value)
+            for idx, value in enumerate(self.draft_action_values or []):
+                self.action_vars[idx].set(value)
             self._set_action_entries_state(tk.NORMAL)
             self.submit_btn.config(state=tk.NORMAL)
             self.prev_day_btn.config(text="查看上一天")
             self.viewing_previous = False
             self._refresh_state()
-            self._update_action_preview()
-            self._set_status("已返回今天，请继续输入生产企业1今日动作。")
-
-    def submit_action(self):
-        if self.collector is None:
-            return
-        try:
-            action = [float(var.get()) for var in self.action_vars]
-            done, reward = self.collector.step(action)
-        except Exception as exc:
-            messagebox.showerror("动作提交失败", str(exc))
-            return
-
-        if done:
-            self.submit_btn.config(state=tk.DISABLED)
-            self.prev_day_btn.config(state=tk.NORMAL)
-            self.next_episode_btn.config(state=tk.NORMAL)
-            self._set_status(
-                f"本回合结束，存活 {self.collector.env.day} 天；"
-                f"已保存 {self.collector.rows_saved} 条专家数据。"
-            )
-            messagebox.showinfo("回合结束", f"production1 本回合存活 {self.collector.env.day} 天。")
-        else:
-            self.prev_day_btn.config(state=tk.NORMAL)
-            self._refresh_state()
-            self._update_action_preview()
-            self._set_status(
-                f"已进入第 {self.collector.env.day} 天；"
-                f"已保存 {self.collector.rows_saved} 条专家数据。"
-            )
+            self._set_status("已返回今天，请继续填写今天的决策。")
 
     def _refresh_state(self, state=None, day=None, readonly=False):
         for item in self.state_table.get_children():
             self.state_table.delete(item)
         if state is None:
             state = self.collector.current_state()
-        if day is None and self.collector is not None:
+        if day is None:
             day = self.collector.env.day
-        for idx, value in enumerate(state):
-            shown_value = display_state_value(idx, value)
-            tags = self._state_tags(idx, shown_value, state)
-            self.state_table.insert(
-                "",
-                tk.END,
-                values=(idx, state_label(idx), format_number(shown_value)),
-                tags=tags,
-            )
+        previous_state = None
+        if not readonly and self.collector.history:
+            previous_state = self.collector.history[-1]["state"]
+        rows = display_rows(state, day=day)
+        for group, name, value, key in rows:
+            tags = risk_tag(key, value, state) or row_change_tag(key, value, previous_state)
+            change = self._change_text(key, value, previous_state)
+            self.state_table.insert("", tk.END, values=(group, name, format_number(value), change), tags=tags)
         mode = "只读查看" if readonly else "当前决策"
-        self.state_table.heading("name", text=f"生产企业1第 {day} 天可见的信息（{mode}）")
+        self.state_table.heading("name", text=f"生产企业第 {day} 天可见的信息（{mode}）", anchor=tk.CENTER)
+
+    def _change_text(self, key, value, previous_state):
+        if previous_state is None:
+            return "-"
+        previous = {row[3]: row[2] for row in display_rows(previous_state)}
+        if key not in previous:
+            return "-"
+        delta = value - previous[key]
+        if abs(delta) < 1e-9:
+            return "无变化"
+        sign = "+" if delta > 0 else ""
+        return f"{sign}{format_number(delta)}"
+
+    def _prefill_action_inputs(self):
+        state = self.collector.current_state()
+        defaults = [
+            max(0.0, raw_state_value(state, 7)),
+            max(0.0, raw_state_value(state, 11)),
+            max(0.0, raw_state_value(state, 12)),
+            max(0.01, raw_state_value(state, 6)),
+        ]
+        for idx, value in enumerate(defaults):
+            self.action_vars[idx].set(format_number(value))
+        self._update_action_hints()
+
+    def _read_human_values(self):
+        try:
+            values = [float(var.get()) for var in self.action_vars]
+        except ValueError as exc:
+            raise ValueError("请在四个动作框中输入数字。") from exc
+        if any(value < 0 for value in values):
+            raise ValueError("请不要输入负数。")
+        return values
+
+    def _human_to_model_action(self, human_values):
+        state = self.collector.current_state()
+        cash = raw_state_value(state, 0)
+        k_base = raw_state_value(state, 11)
+        l_base = raw_state_value(state, 12)
+        price_base = raw_state_value(state, 6)
+        loan, k_need, l_need, price = human_values
+
+        if cash <= 0:
+            if loan > 0:
+                raise ValueError("当前现金为0，贷款意愿只能填写0。")
+            loan_action = -0.5
+        else:
+            if loan > cash:
+                raise ValueError(f"贷款意愿不能超过当前现金 {format_number(cash)}。")
+            loan_action = loan / cash - 0.5
+
+        k_action = self._quantity_to_action(k_need, k_base, "K采购需求")
+        l_action = self._quantity_to_action(l_need, l_base, "L采购需求")
+        if price_base <= 0:
+            raise ValueError("当前价格基准异常，不能提交价格动作。")
+        price_action = price / price_base - 1
+        if not -0.5 <= price_action <= 0.5:
+            raise ValueError(
+                f"销售价格只能在 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)} 之间。"
+            )
+        return [loan_action, k_action, l_action, price_action]
+
+    def _quantity_to_action(self, value, base, name):
+        if base <= 0:
+            action = value / 10 - 0.5
+            if not -0.5 <= action <= 0.5:
+                raise ValueError(f"{name}当前为0，请填写0到10之间的数。")
+            return action
+        action = value / base - 1
+        if not -0.5 <= action <= 0.5:
+            raise ValueError(
+                f"{name}只能在 {format_number(base * 0.5)} 到 {format_number(base * 1.5)} 之间。"
+            )
+        return action
+
+    def _update_action_hints(self):
+        if self.collector is None:
+            for var in self.action_hint_vars:
+                var.set("-")
+            return
+        state = self.collector.current_state()
+        cash = raw_state_value(state, 0)
+        k_base = raw_state_value(state, 11)
+        l_base = raw_state_value(state, 12)
+        price_base = raw_state_value(state, 6)
+        hints = [
+            f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
+            f"当前K需求：{format_number(k_base)}；建议范围 {format_number(k_base * 0.5 if k_base else 0)} 到 {format_number(k_base * 1.5 if k_base else 10)}",
+            f"当前L需求：{format_number(l_base)}；建议范围 {format_number(l_base * 0.5 if l_base else 0)} 到 {format_number(l_base * 1.5 if l_base else 10)}",
+            f"当前预设价格：{format_number(price_base)}；建议范围 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)}",
+        ]
+        for idx, text in enumerate(hints):
+            self.action_hint_vars[idx].set(text)
+
+    def _show_adjust_popup(self, index):
+        if self.collector is None or self.viewing_previous:
+            return
+        if self.suppress_adjust_popup:
+            return
+        self._destroy_adjust_popup()
+        entry = self.action_entries[index]
+        x = entry.winfo_rootx() + entry.winfo_width() + 4
+        y = entry.winfo_rooty()
+        popup = tk.Toplevel(self)
+        popup.title("快捷调整")
+        popup.geometry(f"+{x}+{y}")
+        popup.transient(self)
+        popup.resizable(False, False)
+        popup.attributes("-topmost", True)
+        popup.protocol("WM_DELETE_WINDOW", self._close_adjust_popup_by_user)
+        self.adjust_popup = popup
+
+        def apply(kind):
+            try:
+                current = float(self.action_vars[index].get())
+            except ValueError:
+                current = 0.0
+            if kind == "minus10":
+                current *= 0.9
+            elif kind == "plus10":
+                current *= 1.1
+            elif kind == "minus1":
+                current -= 1
+            elif kind == "plus1":
+                current += 1
+            elif kind == "zero":
+                current = 0
+            self.action_vars[index].set(format_number(max(0.0, current)))
+            self._destroy_adjust_popup()
+
+        for label, kind in [
+            ("减少10%", "minus10"),
+            ("增加10%", "plus10"),
+            ("-1", "minus1"),
+            ("+1", "plus1"),
+            ("设为0", "zero"),
+        ]:
+            ttk.Button(popup, text=label, command=lambda k=kind: apply(k)).pack(side=tk.LEFT, padx=2, pady=4)
+
+        popup.update_idletasks()
+        bottom_aligned_y = entry.winfo_rooty() + entry.winfo_height() - popup.winfo_height()
+        popup.geometry(f"+{x}+{max(0, bottom_aligned_y)}")
+
+    def _hide_adjust_popup_if_focus_left(self):
+        focus = self.focus_get()
+        if self.adjust_popup is None:
+            return
+        if focus in self.action_entries:
+            return
+        if str(focus).startswith(str(self.adjust_popup)):
+            return
+        self._destroy_adjust_popup()
+
+    def _close_adjust_popup_by_user(self):
+        self.suppress_adjust_popup = True
+        self._destroy_adjust_popup()
+        self.after(300, self._allow_adjust_popup_again)
+
+    def _allow_adjust_popup_again(self):
+        self.suppress_adjust_popup = False
+
+    def _destroy_adjust_popup(self):
+        if self.adjust_popup is not None and self.adjust_popup.winfo_exists():
+            self.adjust_popup.destroy()
+        self.adjust_popup = None
 
     def _set_action_entries_state(self, state):
         for entry in self.action_entries:
             entry.config(state=state)
 
-    def _state_tags(self, idx, value, state):
-        cash = display_state_value(0, state[0])
-        if idx == 0:
-            if value < 50:
-                return ("risk_high",)
-            if value < 200:
-                return ("risk_medium",)
-        if idx == 2:
-            if cash > 0 and value > cash * 3:
-                return ("risk_high",)
-            if cash > 0 and value > cash:
-                return ("risk_medium",)
-        if idx in (9, 10):
-            if cash > 0 and value > cash:
-                return ("risk_high",)
-            if cash > 0 and value > cash * 0.5:
-                return ("risk_medium",)
-        return ()
-
-    def _update_action_preview(self, readonly=False):
-        if self.collector is None:
-            for var in self.preview_vars:
-                var.set("-")
+    def _run_busy(self, text, func):
+        if self.busy:
             return
-
-        state = self.collector.current_state()
-        cash = display_state_value(0, state[0])
-        k_need = display_state_value(11, state[11])
-        l_need = display_state_value(12, state[12])
-        next_price = display_state_value(6, state[6])
-
+        self.busy = True
+        self._set_status(text)
+        self.update_idletasks()
         try:
-            values = [float(var.get()) for var in self.action_vars]
-        except ValueError:
-            for var in self.preview_vars:
-                var.set("请输入数字")
-            return
-
-        wndef, k_action, l_action, price_action = values
-        previews = [
-            f"预计贷款意愿约 {format_number(cash * (wndef + 0.5))}",
-            f"预计K需求约 {format_number((10 if k_need == 0 else k_need) * (k_action + 0.5 if k_need == 0 else 1 + k_action))}",
-            f"预计L需求约 {format_number((10 if l_need == 0 else l_need) * (l_action + 0.5 if l_need == 0 else 1 + l_action))}",
-            f"预计明天报价约 {format_number(next_price * (1 + price_action))}",
-        ]
-        if readonly:
-            previews = [f"上一天记录：{text}" for text in previews]
-        for idx, text in enumerate(previews):
-            self.preview_vars[idx].set(text)
+            func()
+        except Exception as exc:
+            messagebox.showerror("操作失败", str(exc))
+        finally:
+            self.busy = False
+            self.update_idletasks()
 
     def _set_status(self, text):
         self.status_var.set(text)

@@ -479,7 +479,7 @@ class Logger:
         for i in range(1, len(data_list)):
             res.append(discount_gamma * res[i - 1] + (1 - discount_gamma) * data_list[i])
         plt.plot(res, c='r', label=target)
-        prifix = '单回合折算' if type is 'finish' else '运行时折算'
+        prifix = '单回合折算' if type == 'finish' else '运行时折算'
         self.output_graph(str(target) + str(prifix) + str(data_name) + "99_1", save_path=path)
 
     def finish(self):
