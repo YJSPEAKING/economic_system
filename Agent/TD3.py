@@ -22,6 +22,7 @@ class TrajectorySequenceStore:
         self.seq_len = max(1, int(seq_len))
         self.max_episodes = max_episodes
         self.episodes = OrderedDict()
+        self.histories = OrderedDict()
 
     def record(self, h_epi, state, action):
         if h_epi is None:
@@ -29,14 +30,18 @@ class TrajectorySequenceStore:
         key = int(h_epi)
         if key not in self.episodes:
             self.episodes[key] = []
+            self.histories[key] = []
         else:
             self.episodes.move_to_end(key)
+            self.histories.move_to_end(key)
         self.episodes[key].append((
             np.asarray(state, dtype=np.float32).copy(),
             np.asarray(action, dtype=np.float32).copy()
         ))
+        self.histories[key].append(self._history(self.episodes[key], len(self.episodes[key]) - 1))
         while len(self.episodes) > self.max_episodes:
-            self.episodes.popitem(last=False)
+            old_key, _ = self.episodes.popitem(last=False)
+            self.histories.pop(old_key, None)
 
     def _history(self, seq, end_pos):
         if not seq:
@@ -53,8 +58,11 @@ class TrajectorySequenceStore:
     def histories_for(self, pick_epi, pick_pos):
         states, actions = [], []
         for epi, pos in zip(np.asarray(pick_epi).reshape(-1), np.asarray(pick_pos).reshape(-1)):
-            seq = self.episodes.get(int(epi))
-            hist = self._history(seq, pos) if seq is not None else None
+            epi_histories = self.histories.get(int(epi))
+            if epi_histories is None or len(epi_histories) == 0:
+                return None
+            pos = int(max(0, min(pos, len(epi_histories) - 1)))
+            hist = epi_histories[pos]
             if hist is None:
                 return None
             states.append(hist[0])
@@ -62,14 +70,14 @@ class TrajectorySequenceStore:
         return np.stack(states, axis=0), np.stack(actions, axis=0)
 
     def sample(self, batch_size):
-        candidates = [key for key, seq in self.episodes.items() if len(seq) > 0]
+        candidates = [key for key, seq in self.histories.items() if len(seq) > 0]
         if not candidates:
             return None
         states, actions = [], []
         for _ in range(batch_size):
             key = random.choice(candidates)
-            seq = self.episodes[key]
-            hist = self._history(seq, random.randrange(len(seq)))
+            seq = self.histories[key]
+            hist = seq[random.randrange(len(seq))]
             states.append(hist[0])
             actions.append(hist[1])
         return np.stack(states, axis=0), np.stack(actions, axis=0)
@@ -95,8 +103,10 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self,s_dim,a_dim):
+    def __init__(self, s_dim, a_dim, max_seq_len=1, use_history=False, hist_hidden=64, nhead=4):
         super(Critic,self).__init__()
+        self.use_history = use_history
+        self.hist_hidden = hist_hidden
 
         #Q1
         self.l1 = nn.Linear(s_dim+a_dim,128)
@@ -108,13 +118,55 @@ class Critic(nn.Module):
         self.l5 = nn.Linear(128,32)
         self.l6 = nn.Linear(32,1)
 
-    def forward(self,state,action):
+        self.hist_input = nn.Linear(s_dim + a_dim, hist_hidden)
+        self.hist_pos_embed = nn.Parameter(torch.zeros(1, max_seq_len, hist_hidden))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hist_hidden,
+            nhead=nhead,
+            dim_feedforward=hist_hidden * 2,
+            dropout=0.1,
+            activation='gelu',
+            batch_first=True
+        )
+        self.hist_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+        self.hist_norm = nn.LayerNorm(hist_hidden)
+
+        # History-aware Q1/Q2 heads
+        self.hl1 = nn.Linear(s_dim + a_dim + hist_hidden, 128)
+        self.hl2 = nn.Linear(128, 32)
+        self.hl3 = nn.Linear(32, 1)
+        self.hl4 = nn.Linear(s_dim + a_dim + hist_hidden, 128)
+        self.hl5 = nn.Linear(128, 32)
+        self.hl6 = nn.Linear(32, 1)
+
+    def _history_feature(self, hist_state, hist_action):
+        hist_state = torch.as_tensor(hist_state, dtype=torch.float32, device=device)
+        hist_action = torch.as_tensor(hist_action, dtype=torch.float32, device=device)
+        hist_sa = torch.cat([hist_state, hist_action], dim=-1)
+        seq_len = hist_sa.size(1)
+        h = self.hist_input(hist_sa) + self.hist_pos_embed[:, :seq_len, :]
+        h = self.hist_encoder(h)
+        return self.hist_norm(h[:, -1, :])
+
+    def forward(self, state, action, hist_state=None, hist_action=None):
         state = torch.as_tensor(state, dtype=torch.float32, device=device)
         action = torch.as_tensor(action, dtype=torch.float32, device=device)
         # state = torch.FloatTensor(state).to(device)
         # action = torch.FloatTensor(action).to(device)
 
         sa = torch.cat([state,action],1)
+
+        if self.use_history and hist_state is not None and hist_action is not None:
+            hist_feat = self._history_feature(hist_state, hist_action)
+            hsa = torch.cat([sa, hist_feat], dim=1)
+            q1 = F.leaky_relu(self.hl1(hsa))
+            q1 = F.leaky_relu(self.hl2(q1))
+            q1 = self.hl3(q1)
+
+            q2 = F.leaky_relu(self.hl4(hsa))
+            q2 = F.leaky_relu(self.hl5(q2))
+            q2 = self.hl6(q2)
+            return q1, q2
 
         q1 = F.leaky_relu(self.l1(sa))
         q1 = F.leaky_relu(self.l2(q1))
@@ -127,13 +179,21 @@ class Critic(nn.Module):
         return q1,q2
 
 
-    def Q1(self,state,action):
+    def Q1(self, state, action, hist_state=None, hist_action=None):
         state = torch.as_tensor(state, dtype=torch.float32, device=device)
         action = torch.as_tensor(action, dtype=torch.float32, device=device)
         # state = torch.FloatTensor(state).to(device)
         # action = torch.FloatTensor(action).to(device)
 
         sa = torch.cat([state,action],1)
+
+        if self.use_history and hist_state is not None and hist_action is not None:
+            hist_feat = self._history_feature(hist_state, hist_action)
+            hsa = torch.cat([sa, hist_feat], dim=1)
+            q1 = F.leaky_relu(self.hl1(hsa))
+            q1 = F.leaky_relu(self.hl2(q1))
+            q1 = self.hl3(q1)
+            return q1
 
         q1 = F.leaky_relu(self.l1(sa))
         q1 = F.leaky_relu(self.l2(q1))
@@ -174,6 +234,11 @@ class TD3(object):
         self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
         self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
         self.max_hist_len = max(1, int(getattr(config, 'MAX_HIST_LEN', 1)))
+        self.use_transformer_critic = (
+            bool(getattr(config, 'USE_TRANSFORMER_CRITIC', False))
+            and self.max_hist_len > 1
+            and self.scope == 'production1'
+        )
         self.sequence_store = TrajectorySequenceStore(self.max_hist_len)
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
@@ -223,7 +288,12 @@ class TD3(object):
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a)
 
-        self.critic = Critic(self.s_dim, self.a_dim).to(device)
+        self.critic = Critic(
+            self.s_dim,
+            self.a_dim,
+            max_seq_len=self.max_hist_len,
+            use_history=self.use_transformer_critic
+        ).to(device)
         self.critic_target = copy.deepcopy(self.critic)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.lr_c)
         # hard_update
@@ -308,6 +378,33 @@ class TD3(object):
         not_done[zero_next_state] = 0.0
         return not_done
 
+    def _critic_history_tensors(self, batch):
+        if not self.use_transformer_critic:
+            return None, None
+        hist = self.sequence_store.histories_for(batch[6], batch[7])
+        if hist is None:
+            return None, None
+        hist_s, hist_a = hist
+        hist_s = torch.as_tensor(hist_s, dtype=torch.float32, device=device)
+        hist_a = torch.as_tensor(hist_a, dtype=torch.float32, device=device)
+        return hist_s, hist_a
+
+    def _replace_last_history_action(self, hist_s, hist_a, action):
+        if hist_s is None or hist_a is None:
+            return None, None
+        hist_a_eval = hist_a.clone()
+        hist_a_eval[:, -1, :] = action
+        return hist_s, hist_a_eval
+
+    def _next_critic_history(self, hist_s, hist_a, next_state, next_action):
+        if hist_s is None or hist_a is None:
+            return None, None
+        next_state = torch.as_tensor(next_state, dtype=torch.float32, device=device)
+        next_action = torch.as_tensor(next_action, dtype=torch.float32, device=device)
+        next_hist_s = torch.cat([hist_s[:, 1:, :], next_state.unsqueeze(1)], dim=1)
+        next_hist_a = torch.cat([hist_a[:, 1:, :], next_action.unsqueeze(1)], dim=1)
+        return next_hist_s, next_hist_a
+
     def learn(self):
 
         if self.pointer < self.learn_start_steps:
@@ -345,6 +442,7 @@ class TD3(object):
         fake_a_n = b_a_tensor
         if hasattr(self, 'act_mean') and hasattr(self, 'act_var'):
             fake_a_n = (b_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
+        critic_hist_s, critic_hist_a = self._critic_history_tensors(b_M)
 
 
         # 根据当前训练步数（pointer）计算Critic和Actor网络的学习率lr_c，lr_a
@@ -457,14 +555,15 @@ class TD3(object):
                 # ==========================================
 
                 # 计算 target Q 值
-                target_Q1, target_Q2 = self.critic_target(b_s_, action_with_noise)
+                next_hist_s, next_hist_a = self._next_critic_history(critic_hist_s, critic_hist_a, b_s_, action_with_noise)
+                target_Q1, target_Q2 = self.critic_target(b_s_, action_with_noise, next_hist_s, next_hist_a)
                 target_Q = torch.min(target_Q1, target_Q2)
 
                 # 🎯 使用融合了【实时判别器打分】和【真实环境利润】的混合奖励去更新 Critic！
                 target_Q = b_r_tensor_fused + self.GAMMA * b_not_done_tensor * target_Q
 
             # 获得当前 batch 的 Q estimates
-            current_Q1, current_Q2 = self.critic(b_s_tensor, b_a_tensor)
+            current_Q1, current_Q2 = self.critic(b_s_tensor, b_a_tensor, critic_hist_s, critic_hist_a)
             # 计算 critic loss = td - error
             self.critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
@@ -479,7 +578,9 @@ class TD3(object):
                 # 🚀 纯粹的 Actor 更新 (Pure Actor)
                 # Actor 绝不接触专家数据，仅通过最大化 Critic 的 Q 值来进化！
                 # ==========================================
-                self.actor_loss = -self.critic.Q1(b_s_tensor, self.actor(b_s_tensor)).mean()
+                actor_action = self.actor(b_s_tensor)
+                actor_hist_s, actor_hist_a = self._replace_last_history_action(critic_hist_s, critic_hist_a, actor_action)
+                self.actor_loss = -self.critic.Q1(b_s_tensor, actor_action, actor_hist_s, actor_hist_a).mean()
 
                 self.actor_optimizer.zero_grad()
                 self.actor_loss.backward()
@@ -512,14 +613,15 @@ class TD3(object):
                     # action_with_noise = (self.actor_target(b_s_) + noise).clamp(-self.a_bound, self.a_bound)
 
                 # 计算target Q 值
-                target_Q1,target_Q2 = self.critic_target(b_s_,action_with_noise)
+                next_hist_s, next_hist_a = self._next_critic_history(critic_hist_s, critic_hist_a, b_s_, action_with_noise)
+                target_Q1,target_Q2 = self.critic_target(b_s_, action_with_noise, next_hist_s, next_hist_a)
                 target_Q = torch.min(target_Q1, target_Q2)
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q * self.discount
                 #3.24
                 target_Q = torch.as_tensor(b_r, dtype=torch.float32, device=device) + self.GAMMA * b_not_done_tensor * target_Q
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q
             # 获得当前batch Q estimates
-            current_Q1,current_Q2 = self.critic(b_s,b_a)
+            current_Q1,current_Q2 = self.critic(b_s, b_a, critic_hist_s, critic_hist_a)
             # 计算critic loss = td - error
             self.critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
         return self.critic_loss

@@ -66,6 +66,7 @@ enterprise_ddpg_config = Config(
     gail_reward_weight=2.0,
     gail_warmup_steps=5000,
     disc_update_ratio=2,
+    use_transformer_critic=True,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
