@@ -6,6 +6,7 @@ import random
 import math
 import copy
 import os
+from collections import OrderedDict
 from Agent.Common.ExperienceReplay_TD3 import Experience_Replay as ExpRep
 from . import  Config
 from Agent.RuningMeanStd import RunningMeanStd
@@ -14,6 +15,64 @@ from Agent.RuningMeanStd import RunningMeanStd
 tranLock = True
 isPercent = True
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+class TrajectorySequenceStore:
+    def __init__(self, seq_len, max_episodes=2000):
+        self.seq_len = max(1, int(seq_len))
+        self.max_episodes = max_episodes
+        self.episodes = OrderedDict()
+
+    def record(self, h_epi, state, action):
+        if h_epi is None:
+            return
+        key = int(h_epi)
+        if key not in self.episodes:
+            self.episodes[key] = []
+        else:
+            self.episodes.move_to_end(key)
+        self.episodes[key].append((
+            np.asarray(state, dtype=np.float32).copy(),
+            np.asarray(action, dtype=np.float32).copy()
+        ))
+        while len(self.episodes) > self.max_episodes:
+            self.episodes.popitem(last=False)
+
+    def _history(self, seq, end_pos):
+        if not seq:
+            return None
+        end_pos = int(max(0, min(end_pos, len(seq) - 1)))
+        start = max(0, end_pos - self.seq_len + 1)
+        window = seq[start:end_pos + 1]
+        if len(window) < self.seq_len:
+            window = [window[0]] * (self.seq_len - len(window)) + window
+        states = np.stack([item[0] for item in window], axis=0)
+        actions = np.stack([item[1] for item in window], axis=0)
+        return states, actions
+
+    def histories_for(self, pick_epi, pick_pos):
+        states, actions = [], []
+        for epi, pos in zip(np.asarray(pick_epi).reshape(-1), np.asarray(pick_pos).reshape(-1)):
+            seq = self.episodes.get(int(epi))
+            hist = self._history(seq, pos) if seq is not None else None
+            if hist is None:
+                return None
+            states.append(hist[0])
+            actions.append(hist[1])
+        return np.stack(states, axis=0), np.stack(actions, axis=0)
+
+    def sample(self, batch_size):
+        candidates = [key for key, seq in self.episodes.items() if len(seq) > 0]
+        if not candidates:
+            return None
+        states, actions = [], []
+        for _ in range(batch_size):
+            key = random.choice(candidates)
+            seq = self.episodes[key]
+            hist = self._history(seq, random.randrange(len(seq)))
+            states.append(hist[0])
+            actions.append(hist[1])
+        return np.stack(states, axis=0), np.stack(actions, axis=0)
 
 
 class Actor(nn.Module):
@@ -114,6 +173,8 @@ class TD3(object):
         self.gail_reward_weight = getattr(config, 'GAIL_REWARD_WEIGHT', 2.0)
         self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
         self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
+        self.max_hist_len = max(1, int(getattr(config, 'MAX_HIST_LEN', 1)))
+        self.sequence_store = TrajectorySequenceStore(self.max_hist_len)
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
         # self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.a_dim))
@@ -232,6 +293,7 @@ class TD3(object):
 
 
         ret_h_epi = self.memory.store_transition(h_epi, state, action, reward, final_state)
+        self.sequence_store.record(h_epi, state, action)
         return ret_h_epi
 
     def mark(self):
@@ -279,6 +341,10 @@ class TD3(object):
         b_s_ = torch.as_tensor(b_s__rm.reshape(-1, self.s_dim), dtype=torch.float32, device=device).detach()
         b_r_tensor = torch.as_tensor(b_r, dtype=torch.float32, device=device).detach()
         b_not_done_tensor = torch.as_tensor(b_not_done, dtype=torch.float32, device=device).detach()
+        fake_s_n = b_s_tensor
+        fake_a_n = b_a_tensor
+        if hasattr(self, 'act_mean') and hasattr(self, 'act_var'):
+            fake_a_n = (b_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
 
         # 根据当前训练步数（pointer）计算Critic和Actor网络的学习率lr_c，lr_a
@@ -299,6 +365,30 @@ class TD3(object):
             if hasattr(self, 'gail_disc') and hasattr(self, 'sample_expert'):
                 # 开启循环“加练”模式
                 for _ in range(disc_update_ratio):
+                    expert_seq = None
+                    fake_seq = None
+                    if hasattr(self, 'sample_expert_sequence'):
+                        expert_seq = self.sample_expert_sequence(self.BATCH_SIZE, self.max_hist_len)
+                        fake_seq = self.sequence_store.sample(self.BATCH_SIZE)
+                    if expert_seq is not None and fake_seq is not None:
+                        expert_s, expert_a = expert_seq
+                        fake_s_seq, fake_a_seq = fake_seq
+                        expert_s_n = torch.clamp((expert_s - self.obs_mean) / torch.sqrt(self.obs_var + 1e-8), -5.0,
+                                                 5.0)
+                        expert_a_n = (expert_a - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
+                        fake_s_n_disc = torch.as_tensor(fake_s_seq, dtype=torch.float32, device=device)
+                        fake_a_n_disc = torch.as_tensor(fake_a_seq, dtype=torch.float32, device=device)
+                        fake_a_n_disc = (fake_a_n_disc - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
+
+                        self.disc_optimizer.zero_grad()
+                        real_logits = self.gail_disc(expert_s_n, expert_a_n)
+                        fake_logits = self.gail_disc(fake_s_n_disc, fake_a_n_disc)
+                        loss_D_real = F.binary_cross_entropy_with_logits(real_logits, torch.full_like(real_logits, 0.9))
+                        loss_D_fake = F.binary_cross_entropy_with_logits(fake_logits, torch.full_like(fake_logits, 0.1))
+                        loss_D = loss_D_real + loss_D_fake
+                        loss_D.backward()
+                        self.disc_optimizer.step()
+                        continue
                     expert_s, expert_a = self.sample_expert(self.BATCH_SIZE)
                     if expert_s is not None:
                         # 1. 数据标准化 (真/假数据)
@@ -344,9 +434,17 @@ class TD3(object):
                 b_r_tensor_fused = b_r_tensor
 
                 # 如果挂载了判别器，用它对刚抽样出的 b_s 和 b_a 进行实时打分
-                if hasattr(self, 'gail_disc') and 'fake_s_n' in locals():
+                if hasattr(self, 'gail_disc'):
                     # fake_s_n 和 fake_a_n 在上面的判别器更新块里已经标准化过了
-                    disc_logits = self.gail_disc(fake_s_n, fake_a_n)
+                    reward_seq = self.sequence_store.histories_for(b_M[6], b_M[7])
+                    if reward_seq is not None:
+                        reward_s_seq, reward_a_seq = reward_seq
+                        reward_s_seq = torch.as_tensor(reward_s_seq, dtype=torch.float32, device=device)
+                        reward_a_seq = torch.as_tensor(reward_a_seq, dtype=torch.float32, device=device)
+                        reward_a_seq = (reward_a_seq - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
+                        disc_logits = self.gail_disc(reward_s_seq, reward_a_seq)
+                    else:
+                        disc_logits = self.gail_disc(fake_s_n, fake_a_n)
                     # 采用 Sigmoid 将分数平滑限制在 0~1 之间，绝对不会造成 Q 值爆炸
                     disc_prob = torch.sigmoid(disc_logits).clamp(1e-4, 1 - 1e-4)
                     raw_r_int = -torch.log1p(-disc_prob)

@@ -59,8 +59,9 @@ class RealActor(nn.Module):
 
 # 2. 判别器 (Discriminator): 负责给动作“打分”
 class RealDiscriminator(nn.Module):
-    def __init__(self, s_dim=33, a_dim=4, hidden_size=100):
+    def __init__(self, s_dim=33, a_dim=4, hidden_size=100, max_seq_len=6, nhead=4):
         super(RealDiscriminator, self).__init__()
+        self.max_seq_len = max_seq_len
         self.net = nn.Sequential(
             nn.Linear(s_dim + a_dim, hidden_size),
             nn.Tanh(),
@@ -69,8 +70,29 @@ class RealDiscriminator(nn.Module):
             nn.Linear(hidden_size, 1) # 输出 Logits
         )
 
+        self.seq_input = nn.Linear(s_dim + a_dim, hidden_size)
+        self.pos_embed = nn.Parameter(torch.zeros(1, max_seq_len, hidden_size))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_size,
+            nhead=nhead,
+            dim_feedforward=hidden_size * 2,
+            dropout=0.1,
+            activation='gelu',
+            batch_first=True
+        )
+        self.seq_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+        self.seq_head = nn.Sequential(
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, 1)
+        )
+
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
+        if x.dim() == 3:
+            seq_len = x.size(1)
+            h = self.seq_input(x) + self.pos_embed[:, :seq_len, :]
+            h = self.seq_encoder(h)
+            return self.seq_head(h[:, -1, :])
         return self.net(x)
 
 class enterprise_nnu:
@@ -103,15 +125,22 @@ class enterprise_nnu:
                 self.expert_states = expert_data[:, :33]
                 self.expert_actions = expert_data[:, 33:37]
                 self.expert_size = len(self.expert_states)
+                marker = pd.to_numeric(df.iloc[:, 0], errors='coerce').round(5).eq(0.1)
+                group_id = marker.cumsum()
+                self.expert_episodes = []
+                for _, group in df.groupby(group_id):
+                    values = torch.FloatTensor(group.values).to(self.device)
+                    if len(values) > 0:
+                        self.expert_episodes.append((values[:, :33], values[:, 33:37]))
                 print(f"✅ 专家记忆库已挂载！共包含 {self.expert_size} 条记录。")
             else:
                 raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
 
             # 4. 【阶段二：唤醒】加载判别器并解冻
-            self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4).to(self.device)
+            self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4, max_seq_len=getattr(config, 'MAX_HIST_LEN', 6)).to(self.device)
             disc_path = os.path.join(current_dir, 'pretrained_discriminator.pth')
             if os.path.exists(disc_path):
-                self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device))
+                self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device), strict=False)
 
             # 【核心改变】：解冻判别器，开启训练模式
             self.gail_disc.train()
@@ -135,6 +164,7 @@ class enterprise_nnu:
             self.enterprise.gail_disc = self.gail_disc
             self.enterprise.disc_optimizer = self.disc_optimizer
             self.enterprise.sample_expert = self.sample_expert
+            self.enterprise.sample_expert_sequence = self.sample_expert_sequence
             # 把标准化参数也传进去，底层算 Loss 时需要用到
             self.enterprise.obs_mean = self.obs_mean
             self.enterprise.obs_var = self.obs_var
@@ -148,6 +178,25 @@ class enterprise_nnu:
         # 随机生成 batch_size 个索引
         indices = torch.randint(0, self.expert_size, (batch_size,), device=self.device)
         return self.expert_states[indices], self.expert_actions[indices]
+
+    def sample_expert_sequence(self, batch_size, seq_len):
+        if not getattr(self, 'expert_episodes', None):
+            return None
+        states, actions = [], []
+        for _ in range(batch_size):
+            ep_idx = torch.randint(0, len(self.expert_episodes), (1,), device=self.device).item()
+            ep_s, ep_a = self.expert_episodes[ep_idx]
+            end = torch.randint(0, len(ep_s), (1,), device=self.device).item()
+            start = max(0, end - seq_len + 1)
+            s_window = ep_s[start:end + 1]
+            a_window = ep_a[start:end + 1]
+            if len(s_window) < seq_len:
+                pad_len = seq_len - len(s_window)
+                s_window = torch.cat([s_window[:1].repeat(pad_len, 1), s_window], dim=0)
+                a_window = torch.cat([a_window[:1].repeat(pad_len, 1), a_window], dim=0)
+            states.append(s_window)
+            actions.append(a_window)
+        return torch.stack(states, dim=0), torch.stack(actions, dim=0)
 
     def run_enterprise(self, state, new_ep):
         if self.scope == 'production1':
