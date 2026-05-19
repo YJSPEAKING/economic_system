@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from numbers import Number
 from urllib.parse import urlparse
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +31,29 @@ PORT = 8501
 SERVER_AUTO_POLICY = os.environ.get("HUMAN_COLLECT_POLICY", DEFAULT_AUTO_POLICY)
 ACCESS_PASSWORD = os.environ.get("HUMAN_COLLECT_PASSWORD", "")
 WEB_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "human_collect_web_data")
+BLOCK_MIN_HUMAN_DAYS = 8
+DECISION_BLOCKS = [
+    {
+        "start": 1,
+        "title": "开局连续决策",
+        "reason": "开局阶段决定贷款、采购和定价的初始方向，会影响企业后续能否稳定运转。",
+    },
+    {
+        "start": 15,
+        "title": "早中期经营片段",
+        "reason": "企业已经经历了一段自动经营，现金、债务和库存可能发生变化，需要重新判断采购和价格。",
+    },
+    {
+        "start": 40,
+        "title": "中期经营片段",
+        "reason": "中期阶段的还款压力、产品库存和市场价格更复杂，需要观察人在压力较高时如何调整经营。",
+    },
+    {
+        "start": 70,
+        "title": "后期经营片段",
+        "reason": "如果企业能存活到后期，这里用于观察长期经营后的保守或激进决策。",
+    },
+]
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
 
@@ -66,9 +90,35 @@ def action_hints(state):
     price_base = raw_state_value(state, 6)
     return [
         f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-        f"当前K需求：{format_number(k_base)}；建议范围 {format_number(k_base * 0.5 if k_base else 0)} 到 {format_number(k_base * 1.5 if k_base else 10)}",
-        f"当前L需求：{format_number(l_base)}；建议范围 {format_number(l_base * 0.5 if l_base else 0)} 到 {format_number(l_base * 1.5 if l_base else 10)}",
-        f"当前预设价格：{format_number(price_base)}；建议范围 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)}",
+        f"原料K与原料L配套生产产品K，少的一种会卡住产量；当前K计划 {format_number(k_base)}，可填 {format_number(k_base * 0.5 if k_base else 0)} 到 {format_number(k_base * 1.5 if k_base else 10)}",
+        f"原料L与原料K配套生产产品K，少的一种会卡住产量；当前L计划 {format_number(l_base)}，可填 {format_number(l_base * 0.5 if l_base else 0)} 到 {format_number(l_base * 1.5 if l_base else 10)}",
+        f"这是产品K的出售价格；当前预设价格 {format_number(price_base)}，可填 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)}",
+    ]
+
+
+def input_number(value):
+    value = float(value)
+    return round(value, 4)
+
+
+def action_limits(state):
+    cash = max(0.0, raw_state_value(state, 0))
+    k_base = raw_state_value(state, 11)
+    l_base = raw_state_value(state, 12)
+    price_base = raw_state_value(state, 6)
+
+    def quantity_limits(base):
+        if base <= 0:
+            return {"min": 0.0, "max": 10.0}
+        return {"min": max(0.0, base * 0.5), "max": max(0.0, base * 1.5)}
+
+    price_min = max(0.0, price_base * 0.5)
+    price_max = max(price_min, price_base * 1.5)
+    return [
+        {"min": 0.0, "max": cash},
+        quantity_limits(k_base),
+        quantity_limits(l_base),
+        {"min": price_min, "max": price_max},
     ]
 
 
@@ -116,13 +166,15 @@ def human_to_model_action(state, values):
     return [loan_action, k_action, l_action, price_action]
 
 
-def serialize_state(collector, state=None, day=None, readonly=False):
+def serialize_state(collector, state=None, day=None, readonly=False, previous_state_override=None):
     if state is None:
         state = collector.current_state()
     if day is None:
         day = collector.env.day
     previous_state = None
-    if not readonly and collector.history:
+    if previous_state_override is not None:
+        previous_state = previous_state_override
+    elif not readonly and collector.history:
         previous_state = collector.history[-1]["state"]
     rows = []
     for group, name, value, key in display_rows(state, day=day):
@@ -139,16 +191,21 @@ def serialize_state(collector, state=None, day=None, readonly=False):
     return {
         "day": day,
         "rows": rows,
-        "defaults": [format_number(value) for value in default_human_values(state)],
+        "defaults": [input_number(value) for value in default_human_values(state)],
         "hints": action_hints(state),
+        "limits": action_limits(state),
     }
 
 
 def change_text(key, value, previous_state):
     if previous_state is None:
         return "-"
+    if not isinstance(value, Number):
+        return "-"
     previous = {row[3]: row[2] for row in display_rows(previous_state)}
     if key not in previous:
+        return "-"
+    if not isinstance(previous[key], Number):
         return "-"
     delta = value - previous[key]
     if abs(delta) < 1e-9:
@@ -168,6 +225,43 @@ def session_stats(session):
         "submitted": count,
         "avg_seconds": round(avg, 3),
         "throughput_per_minute": round(throughput, 3),
+    }
+
+
+def current_block(session):
+    index = session.get("block_index", 0)
+    index = max(0, min(index, len(DECISION_BLOCKS) - 1))
+    return DECISION_BLOCKS[index]
+
+
+def next_block_after(day):
+    for index, block in enumerate(DECISION_BLOCKS):
+        if block["start"] > day:
+            return index, block
+    return None, None
+
+
+def block_status(session):
+    collector = session["collector"]
+    day = int(collector.env.day)
+    manual_days = int(session.get("human_days_in_block", 0))
+    remaining = max(0, BLOCK_MIN_HUMAN_DAYS - manual_days)
+    next_index, next_block = next_block_after(day)
+    can_skip = remaining == 0 and next_block is not None
+    block = current_block(session)
+    return {
+        "day": day,
+        "block_index": session.get("block_index", 0),
+        "block_title": block["title"],
+        "block_start": session.get("block_start_day", block["start"]),
+        "block_reason": block["reason"],
+        "manual_days_in_block": manual_days,
+        "min_human_days": BLOCK_MIN_HUMAN_DAYS,
+        "remaining_before_skip": remaining,
+        "can_skip": can_skip,
+        "next_block_start": next_block["start"] if next_block else None,
+        "next_block_title": next_block["title"] if next_block else None,
+        "next_block_reason": next_block["reason"] if next_block else "当前已经没有预设的下一段，可以继续手动决策或结束采集。",
     }
 
 
@@ -194,9 +288,8 @@ HTML = r"""<!doctype html>
     table { width: 100%; border-collapse: collapse; background: white; }
     th, td { border-bottom: 1px solid #e5eaf0; padding: 10px 8px; text-align: center; }
     th { background: #eef3f8; font-weight: 600; }
-    tr.risk_high td, tr.change_bad td { background: #ffe6e6; }
-    tr.risk_medium td { background: #fff3cd; }
-    tr.change_good td { background: #e2f6e8; }
+    tr.risk_high td, tr.risk_medium td, tr.change_bad td { background: #e2f6e8; }
+    tr.change_good td { background: #ffe6e6; }
     .actions { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 14px; }
     .action-card { border: 1px solid #dde3ea; border-radius: 8px; padding: 12px; }
     .action-card label { display: block; font-weight: 600; margin-bottom: 8px; }
@@ -205,6 +298,9 @@ HTML = r"""<!doctype html>
     .adjust { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .adjust button { height: 28px; padding: 0 8px; background: #eef3f8; color: #18324a; border: 1px solid #ccd6e0; }
     .status { color: #546579; margin-left: 10px; }
+    .block-info { margin-top: 14px; padding: 12px 14px; background: #f3f8ff; border: 1px solid #cfe0f5; border-radius: 8px; line-height: 1.65; }
+    .block-info strong { color: #18324a; }
+    .block-info .muted { color: #596b7d; }
     .hidden { display: none; }
     .busy { position: fixed; inset: 0; background: rgba(255,255,255,.72); display: none; align-items: center; justify-content: center; z-index: 20; }
     .busy.show { display: flex; }
@@ -218,7 +314,7 @@ HTML = r"""<!doctype html>
     <section id="intro" class="panel intro">
       <h1>任务目标</h1>
       <p>你将扮演“生产企业”的经营决策者。每天系统会展示企业现金、债务、还款压力、采购需求和市场价格等关键信息。</p>
-      <p>请填写今天希望申请的贷款金额、K/L采购需求和销售价格。目标不是某一天赚最多，而是尽量让企业活得更久、经营更稳定。</p>
+      <p>请填写今天希望申请的贷款金额、原料K采购需求、原料L采购需求和产品K销售价格。目标不是某一天赚最多，而是尽量让企业活得更久、经营更稳定。</p>
       <div class="row" style="justify-content:center;margin-top:24px">
         <label>参与者编号（可选） <input id="participant" value="anonymous" /></label>
         <label>访问口令（如有） <input id="accessPassword" type="password" /></label>
@@ -230,17 +326,14 @@ HTML = r"""<!doctype html>
       <div class="panel">
         <div class="row">
           <strong id="dayTitle">第 - 天</strong>
-          <button id="prevBtn" class="secondary" disabled>查看上一天</button>
-          <button id="submitBtn">提交动作并进入下一天</button>
-          <button id="nextEpisodeBtn" class="secondary" disabled>开始下一回合</button>
-          <button id="endBtn" class="danger">结束采集</button>
           <span id="status" class="status"></span>
         </div>
+        <div id="blockInfo" class="block-info"></div>
       </div>
 
       <div class="panel">
         <table>
-          <thead><tr><th>类别</th><th>信息</th><th>参考数值</th><th>相对上一天</th></tr></thead>
+          <thead><tr><th>信息</th><th>参考数值</th><th>相对上一天</th></tr></thead>
           <tbody id="stateRows"></tbody>
         </table>
       </div>
@@ -248,17 +341,28 @@ HTML = r"""<!doctype html>
       <div class="panel">
         <div class="actions" id="actions"></div>
       </div>
+
+      <div class="panel">
+        <div class="row">
+          <button id="prevBtn" class="secondary" disabled>查看上一天</button>
+          <button id="submitBtn">提交动作并进入下一天</button>
+          <button id="skipBtn" class="secondary" disabled>完成本段，跳到下一段</button>
+          <button id="nextEpisodeBtn" class="secondary" disabled>开始下一回合</button>
+          <button id="endBtn" class="danger">结束采集</button>
+        </div>
+      </div>
     </section>
   </main>
   <div id="busy" class="busy"><div class="spinner"></div></div>
 
 <script>
-const actionNames = ["申请贷款金额", "K采购需求", "L采购需求", "销售价格"];
+const actionNames = ["申请贷款金额", "原料K采购需求", "原料L采购需求", "产品K销售价格"];
 let sessionId = null;
 let current = null;
 let previousSnapshot = null;
 let viewingPrevious = false;
 let draftValues = null;
+let block = null;
 
 function $(id) { return document.getElementById(id); }
 function busy(show) { $("busy").classList.toggle("show", show); }
@@ -282,20 +386,46 @@ function renderState(data, readonly=false) {
   data.rows.forEach(row => {
     const tr = document.createElement("tr");
     (row.tags || []).forEach(tag => tr.classList.add(tag));
-    tr.innerHTML = `<td>${row.group}</td><td>${row.name}</td><td>${row.value}</td><td>${row.change}</td>`;
+    tr.innerHTML = `<td>${row.name}</td><td>${row.value}</td><td>${row.change}</td>`;
     tbody.appendChild(tr);
   });
 }
 
-function renderActions(defaults, hints, disabled=false) {
+function renderBlockInfo(status) {
+  block = status;
+  if (!status) {
+    $("blockInfo").innerHTML = "";
+    $("skipBtn").disabled = true;
+    $("skipBtn").textContent = "完成本段，跳到下一段";
+    return;
+  }
+  const skipText = status.can_skip
+    ? `本段已完成 ${status.manual_days_in_block} 天，可以跳到第 ${status.next_block_start} 天继续决策`
+    : (status.next_block_start
+        ? `还需要完成 ${status.remaining_before_skip} 天人工决策后，才能跳到第 ${status.next_block_start} 天`
+        : "当前已经没有预设的下一段");
+  $("blockInfo").innerHTML = `
+    <div><strong>当前进度：</strong>第 ${status.day} 天，${status.block_title}。本段已完成 ${status.manual_days_in_block}/${status.min_human_days} 天人工决策。</div>
+    <div class="muted"><strong>跳转提示：</strong>${skipText}。</div>
+    <div class="muted"><strong>下一段为什么需要决策：</strong>${status.next_block_reason}</div>
+  `;
+  $("skipBtn").disabled = !status.can_skip;
+  $("skipBtn").textContent = status.can_skip
+    ? `跳到第 ${status.next_block_start} 天`
+    : (status.next_block_start ? `还差 ${status.remaining_before_skip} 天可跳过` : "没有下一段");
+}
+
+function renderActions(defaults, hints, limits, disabled=false) {
   const box = $("actions");
   box.innerHTML = "";
   actionNames.forEach((name, i) => {
+    const limit = limits && limits[i] ? limits[i] : {min: 0, max: ""};
+    const maxAttr = Number.isFinite(Number(limit.max)) ? `max="${limit.max}"` : "";
     const card = document.createElement("div");
     card.className = "action-card";
     card.innerHTML = `
       <label>${name}</label>
-      <input id="action${i}" type="number" step="0.01" min="0" value="${defaults[i] || 0}" ${disabled ? "disabled" : ""}/>
+      <input id="action${i}" type="number" step="0.01" min="${limit.min}" ${maxAttr} value="${defaults[i] || 0}" onblur="clampInput(${i})" ${disabled ? "disabled" : ""}/>
       <div class="hint">${hints[i] || ""}</div>
       <div class="adjust">
         <button type="button" onclick="adjust(${i},0.9)" ${disabled ? "disabled" : ""}>减少10%</button>
@@ -309,38 +439,87 @@ function renderActions(defaults, hints, disabled=false) {
 }
 
 function values() {
-  return [0,1,2,3].map(i => Number($("action" + i).value));
+  return [0,1,2,3].map(i => {
+    const el = $("action" + i);
+    const value = Number(el.value);
+    const min = Number(el.min || 0);
+    const max = Number(el.max);
+    if (!Number.isFinite(value)) throw new Error(`请填写${actionNames[i]}。`);
+    if (value < min || (Number.isFinite(max) && value > max)) {
+      const maxText = Number.isFinite(max) ? max : "不限";
+      throw new Error(`${actionNames[i]}只能填写 ${min} 到 ${maxText} 之间的数。`);
+    }
+    return value;
+  });
 }
-function adjust(i, factor) { const el = $("action" + i); el.value = Math.max(0, Number(el.value || 0) * factor).toFixed(4).replace(/\.?0+$/, ""); }
-function add(i, delta) { const el = $("action" + i); el.value = Math.max(0, Number(el.value || 0) + delta).toFixed(4).replace(/\.?0+$/, ""); }
-function setZero(i) { $("action" + i).value = 0; }
+function formatInputValue(value) { return Number(value).toFixed(4).replace(/\.?0+$/, ""); }
+function bounded(i, value) {
+  const el = $("action" + i);
+  const min = Number(el.min || 0);
+  const max = Number(el.max);
+  let next = Math.max(min, Number(value || 0));
+  if (Number.isFinite(max)) next = Math.min(max, next);
+  return next;
+}
+function clampInput(i) { const el = $("action" + i); el.value = formatInputValue(bounded(i, Number(el.value || 0))); }
+function adjust(i, factor) { const el = $("action" + i); el.value = formatInputValue(bounded(i, Number(el.value || 0) * factor)); }
+function add(i, delta) { const el = $("action" + i); el.value = formatInputValue(bounded(i, Number(el.value || 0) + delta)); }
+function setZero(i) { const el = $("action" + i); el.value = formatInputValue(bounded(i, 0)); }
 
 async function start() {
   const data = await api("/api/start", {participant_id: $("participant").value, password: $("accessPassword").value});
   sessionId = data.session_id;
   current = data.state;
+  block = data.block;
   previousSnapshot = null;
   $("intro").classList.add("hidden");
   $("app").classList.remove("hidden");
   $("status").textContent = "环境已初始化，请填写今天的决策。";
   renderState(current);
-  renderActions(current.defaults, current.hints);
+  renderActions(current.defaults, current.hints, current.limits);
+  renderBlockInfo(data.block);
 }
 
 async function submitStep() {
   const data = await api("/api/step", {session_id: sessionId, values: values()});
   previousSnapshot = data.previous;
   current = data.state;
+  block = data.block;
   $("prevBtn").disabled = !previousSnapshot;
   if (data.done) {
     $("submitBtn").disabled = true;
+    $("skipBtn").disabled = true;
     $("nextEpisodeBtn").disabled = false;
     $("status").textContent = `本回合结束，存活 ${data.survival_days} 天；已保存 ${data.rows_saved} 条专家数据。`;
   } else {
     $("status").textContent = `已进入第 ${current.day} 天；已保存 ${data.rows_saved} 条专家数据。`;
     renderState(current);
-    renderActions(current.defaults, current.hints);
+    renderActions(current.defaults, current.hints, current.limits);
+    renderBlockInfo(data.block);
   }
+}
+
+async function skipToNextBlock() {
+  const data = await api("/api/skip_to_next_block", {session_id: sessionId});
+  previousSnapshot = null;
+  viewingPrevious = false;
+  current = data.state;
+  block = data.block;
+  $("prevBtn").disabled = true;
+  $("prevBtn").textContent = "查看上一天";
+  if (data.done) {
+    $("submitBtn").disabled = true;
+    $("skipBtn").disabled = true;
+    $("nextEpisodeBtn").disabled = false;
+    $("status").textContent = `自动推进过程中本回合结束，存活 ${data.survival_days} 天；已保存 ${data.rows_saved} 条专家数据。`;
+  } else {
+    $("submitBtn").disabled = false;
+    $("status").textContent = `系统已自动推进 ${data.auto_days} 天，现在到第 ${current.day} 天，开始采集：${data.block.block_title}。`;
+  }
+  renderState(current);
+  renderActions(current.defaults, current.hints, current.limits, data.done);
+  renderBlockInfo(data.block);
+  if (data.done) $("skipBtn").disabled = true;
 }
 
 function togglePrevious() {
@@ -350,15 +529,17 @@ function togglePrevious() {
     viewingPrevious = true;
     $("prevBtn").textContent = "返回今天";
     $("submitBtn").disabled = true;
+    $("skipBtn").disabled = true;
     renderState(previousSnapshot, true);
-    renderActions(previousSnapshot.human_values, previousSnapshot.hints, true);
+    renderActions(previousSnapshot.human_values, previousSnapshot.hints, previousSnapshot.limits, true);
     $("status").textContent = "正在查看上一天记录：这里只能查看，不能修改。";
   } else {
     viewingPrevious = false;
     $("prevBtn").textContent = "查看上一天";
     $("submitBtn").disabled = false;
+    renderBlockInfo(block);
     renderState(current);
-    renderActions(draftValues || current.defaults, current.hints);
+    renderActions(draftValues || current.defaults, current.hints, current.limits);
     $("status").textContent = "已返回今天，请继续填写今天的决策。";
   }
 }
@@ -366,20 +547,24 @@ function togglePrevious() {
 async function nextEpisode() {
   const data = await api("/api/next_episode", {session_id: sessionId});
   current = data.state;
+  block = data.block;
   previousSnapshot = null;
   viewingPrevious = false;
   $("prevBtn").disabled = true;
   $("prevBtn").textContent = "查看上一天";
   $("submitBtn").disabled = false;
+  $("skipBtn").disabled = true;
   $("nextEpisodeBtn").disabled = true;
   $("status").textContent = "新回合已开始，请填写今天的决策。";
   renderState(current);
-  renderActions(current.defaults, current.hints);
+  renderActions(current.defaults, current.hints, current.limits);
+  renderBlockInfo(data.block);
 }
 
 async function endSession() {
   await api("/api/end", {session_id: sessionId});
   $("submitBtn").disabled = true;
+  $("skipBtn").disabled = true;
   $("nextEpisodeBtn").disabled = true;
   $("prevBtn").disabled = true;
   $("endBtn").disabled = true;
@@ -388,6 +573,7 @@ async function endSession() {
 
 $("startBtn").onclick = () => start().catch(e => alert(e.message));
 $("submitBtn").onclick = () => submitStep().catch(e => alert(e.message));
+$("skipBtn").onclick = () => skipToNextBlock().catch(e => alert(e.message));
 $("prevBtn").onclick = togglePrevious;
 $("nextEpisodeBtn").onclick = () => nextEpisode().catch(e => alert(e.message));
 $("endBtn").onclick = () => endSession().catch(e => alert(e.message));
@@ -432,6 +618,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(api_start(payload))
             elif path == "/api/step":
                 self._send_json(api_step(payload))
+            elif path == "/api/skip_to_next_block":
+                self._send_json(api_skip_to_next_block(payload))
             elif path == "/api/next_episode":
                 self._send_json(api_next_episode(payload))
             elif path == "/api/end":
@@ -480,12 +668,16 @@ def api_start(payload):
         "auto_policy": auto_policy,
         "output_path": output_path,
         "meta_output_path": meta_output_path,
+        "block_index": 0,
+        "block_start_day": DECISION_BLOCKS[0]["start"],
+        "human_days_in_block": 0,
     }
     with SESSIONS_LOCK:
         SESSIONS[session_id] = session
     return {
         "session_id": session_id,
         "state": serialize_state(collector),
+        "block": block_status(session),
         "output_path": output_path,
         "meta_output_path": meta_output_path,
     }
@@ -503,14 +695,16 @@ def api_step(payload):
         decision_seconds = now - session["decision_started_at"]
         session["durations"].append(decision_seconds)
         done, _ = collector.step(model_action, values, decision_seconds)
+        session["human_days_in_block"] = int(session.get("human_days_in_block", 0)) + 1
         previous = serialize_state(collector, state_before, day_before, readonly=True)
-        previous["human_values"] = [format_number(value) for value in values]
+        previous["human_values"] = [input_number(value) for value in values]
         session["decision_started_at"] = time.perf_counter()
         result = {
             "done": done,
             "previous": previous,
             "rows_saved": collector.rows_saved,
             "stats": session_stats(session),
+            "block": block_status(session),
         }
         if done:
             result["survival_days"] = collector.env.day
@@ -520,13 +714,61 @@ def api_step(payload):
         return result
 
 
+def api_skip_to_next_block(payload):
+    session = get_session(payload.get("session_id"))
+    with session["lock"]:
+        collector = session["collector"]
+        status = block_status(session)
+        if not status["can_skip"]:
+            if status["next_block_start"] is None:
+                raise ValueError("当前已经没有预设的下一段，可以继续人工决策或结束采集。")
+            raise ValueError(f"本段还需要完成 {status['remaining_before_skip']} 天人工决策后才能跳过。")
+
+        target_index, target_block = next_block_after(collector.env.day)
+        target_day = int(target_block["start"])
+        auto_days = 0
+        last_auto = None
+        done = False
+
+        while collector.env.day < target_day:
+            last_auto = collector.auto_step()
+            auto_days += 1
+            done = bool(last_auto["done"])
+            if done:
+                break
+
+        if not done:
+            session["block_index"] = target_index
+            session["block_start_day"] = target_day
+            session["human_days_in_block"] = 0
+            session["decision_started_at"] = time.perf_counter()
+
+        previous_state = last_auto["state"] if last_auto is not None else None
+        result = {
+            "done": done,
+            "auto_days": auto_days,
+            "rows_saved": collector.rows_saved,
+            "stats": session_stats(session),
+            "block": block_status(session),
+        }
+        if done:
+            result["survival_days"] = collector.env.day
+            result["state"] = serialize_state(collector)
+        else:
+            result["state"] = serialize_state(collector, previous_state_override=previous_state)
+        return result
+
+
 def api_next_episode(payload):
     session = get_session(payload.get("session_id"))
     with session["lock"]:
         collector = session["collector"]
         collector.start_episode()
         session["decision_started_at"] = time.perf_counter()
-        return {"state": serialize_state(collector)}
+        session["block_index"] = 0
+        session["block_start_day"] = DECISION_BLOCKS[0]["start"]
+        session["human_days_in_block"] = 0
+        return {"state": serialize_state(collector), "block": block_status(session)}
 
 
 def api_end(payload):

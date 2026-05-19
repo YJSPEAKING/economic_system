@@ -21,7 +21,7 @@ TARGET_AGENT = "production1"
 DEFAULT_SEED = 184
 DEFAULT_AUTO_POLICY = "td3"
 ACTION_NAMES = ["WNDF", "K", "L", "price"]
-ACTION_DISPLAY_NAMES = ["申请贷款金额", "K采购需求", "L采购需求", "销售价格"]
+ACTION_DISPLAY_NAMES = ["申请贷款金额", "原料K采购需求", "原料L采购需求", "产品K销售价格"]
 ENTERPRISE_ADD_LIST = {
     "production1": "K",
     "consumption1": "L",
@@ -96,6 +96,8 @@ def raw_state_value(state, index):
 def format_number(value):
     if value is None:
         return "-"
+    if isinstance(value, str):
+        return value
     if abs(value) >= 1000:
         return f"{value:,.2f}"
     return f"{value:.4g}"
@@ -181,56 +183,82 @@ def market_min(values):
     return min(positives) if positives else 0.0
 
 
+def weighted_average(pairs):
+    total_num = sum(num for _, num in pairs)
+    if total_num <= 0:
+        return 0.0
+    return sum(price * num for price, num in pairs) / total_num
+
+
 def display_rows(state, day=None):
     is_first_day = day == 1
-    previous_label = "开局参考" if is_first_day else "上一天"
-    sales_label = "开局时生产企业可参考的K销售数量" if is_first_day else "上一天生产企业卖出的K数量"
-    output_label = "开局时生产企业可参考的K生产数量" if is_first_day else "上一天生产企业生产出的K数量"
-    production_purchase_label = "开局时生产企业可参考的K数量" if is_first_day else "上一天生产企业实际买到的K数量"
-    consumer_purchase_label = "开局时消费企业可参考的商品总量" if is_first_day else "上一天消费企业购买到的商品总量"
-    consumer_price_label = "开局时消费企业可参考的平均单价" if is_first_day else "上一天消费企业购买商品的平均单价"
-    production_price_label = "开局时生产企业可参考的原料平均单价" if is_first_day else "上一天生产企业购买原料的平均单价"
-    production_num, production_avg = aggregate_purchase(state, 13)
-    consumer_num, consumer_avg = aggregate_purchase(state, 21)
+    previous_text = "开局参考" if is_first_day else "上一天"
+    k_pairs = [
+        (raw_state_value(state, 13), raw_state_value(state, 14)),
+        (raw_state_value(state, 17), raw_state_value(state, 18)),
+    ]
+    l_pairs = [
+        (raw_state_value(state, 15), raw_state_value(state, 16)),
+        (raw_state_value(state, 19), raw_state_value(state, 20)),
+    ]
+    previous_k_bought = sum(num for _, num in k_pairs)
+    previous_l_bought = sum(num for _, num in l_pairs)
+    previous_k_avg_price = weighted_average(k_pairs)
+    previous_l_avg_price = weighted_average(l_pairs)
+    previous_purchase_spend = sum(price * num for price, num in k_pairs + l_pairs)
     k_prices = [raw_state_value(state, 29), raw_state_value(state, 30)]
     l_prices = [raw_state_value(state, 31), raw_state_value(state, 32)]
     cash = raw_state_value(state, 0)
     payback = raw_state_value(state, 9)
     interest = raw_state_value(state, 10)
+    debt_due = payback + interest
     k_need = raw_state_value(state, 11)
     l_need = raw_state_value(state, 12)
     price = raw_state_value(state, 6)
+    product_stock = raw_state_value(state, 1)
+    previous_sales = raw_state_value(state, 3)
+    previous_output = raw_state_value(state, 4)
+    previous_price = raw_state_value(state, 5)
+    previous_revenue = previous_sales * previous_price
+    previous_net = previous_revenue - previous_purchase_spend
     k_market = market_min(k_prices)
     l_market = market_min(l_prices)
     return [
-        ("贷款参考", "当前现金：申请贷款金额不能超过这个数", cash, "cash"),
-        ("贷款参考", "今天需要还给银行的钱：本金+利息", payback + interest, "debt_due"),
-        ("贷款参考", "目前还欠银行的钱", raw_state_value(state, 2), "debt"),
-        ("采购K参考", "K是生产企业生产产品时需要购买的原料之一；当前计划购买K数量", k_need, "k_need"),
-        ("采购K参考", "今天市场上K的最低单价", k_market, "k_market"),
-        ("采购K参考", production_purchase_label, production_num, "purchase_num"),
-        ("采购L参考", "L是生产企业生产产品时需要购买的原料之一；当前计划购买L数量", l_need, "l_need"),
-        ("采购L参考", "今天市场上L的最低单价", l_market, "l_market"),
-        ("K销售参考", "生产企业出售产品K的当前单价", price, "price"),
-        ("K销售参考", sales_label, raw_state_value(state, 3), "sales"),
-        ("K销售参考", output_label, raw_state_value(state, 4), "output"),
-        ("市场背景", consumer_purchase_label, consumer_num, "consumer_num"),
-        ("市场背景", consumer_price_label, consumer_avg, "consumer_price"),
-        ("市场背景", production_price_label, production_avg, "purchase_price"),
+        ("总体", "当前现金（也是申请贷款金额上限）", cash, "cash"),
+        ("总体", "今天需要还款（本金+利息）", debt_due, "debt_due"),
+        ("总体", "目前总欠款", raw_state_value(state, 2), "debt"),
+        ("总体", f"{previous_text}经营差额：收入 {format_number(previous_revenue)} - 原料采购支出 {format_number(previous_purchase_spend)}", previous_net, "previous_net"),
+        ("原料K", "原料K用途：与原料L配套投入生产，买到较少的一种会限制产品K产量", "生产公式：产品K = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
+        ("原料K", "当前原料K库存", "0（原料当天购买、当天投入生产，不跨天保存）", "k_inventory"),
+        ("原料K", "今天计划购买原料K数量", k_need, "k_need"),
+        ("原料K", "今天市场上原料K最低单价", k_market, "k_market"),
+        ("原料K", f"{previous_text}实际买到原料K数量 / 平均单价", f"{format_number(previous_k_bought)} / {format_number(previous_k_avg_price)}", "previous_k_bought"),
+        ("原料L", "原料L用途：与原料K配套投入生产，买到较少的一种会限制产品K产量", "生产公式：产品K = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
+        ("原料L", "当前原料L库存", "0（原料当天购买、当天投入生产，不跨天保存）", "l_inventory"),
+        ("原料L", "今天计划购买原料L数量", l_need, "l_need"),
+        ("原料L", "今天市场上原料L最低单价", l_market, "l_market"),
+        ("原料L", f"{previous_text}实际买到原料L数量 / 平均单价", f"{format_number(previous_l_bought)} / {format_number(previous_l_avg_price)}", "previous_l_bought"),
+        ("产品K", "当前可出售的产品K库存", product_stock, "product_stock"),
+        ("产品K", "今天产品K销售价格", price, "price"),
+        ("产品K", f"{previous_text}产品K表现：售出数量（产出数量 {format_number(previous_output)}）", previous_sales, "sales"),
     ]
 
 
 def row_change_tag(key, value, previous_state):
     if previous_state is None:
         return ()
+    if not isinstance(value, (int, float, np.integer, np.floating)):
+        return ()
     previous = {row[3]: row[2] for row in display_rows(previous_state)}
     if key not in previous:
         return ()
     old = previous[key]
+    if not isinstance(old, (int, float, np.integer, np.floating)):
+        return ()
     if abs(value - old) < 1e-9:
         return ()
-    good_when_up = {"cash", "stock", "sales", "output"}
-    bad_when_up = {"debt", "payback", "interest", "purchase_price", "k_market", "l_market"}
+    good_when_up = {"cash", "previous_net", "previous_revenue", "sales", "output", "sales_output"}
+    bad_when_up = {"debt", "payback", "interest", "debt_due", "purchase_spend", "k_market", "l_market"}
     if key in good_when_up:
         return ("change_good",) if value > old else ("change_bad",)
     if key in bad_when_up:
@@ -239,6 +267,8 @@ def row_change_tag(key, value, previous_state):
 
 
 def risk_tag(key, value, state):
+    if not isinstance(value, (int, float, np.integer, np.floating)):
+        return ()
     cash = raw_state_value(state, 0)
     if key == "cash":
         if value < 50:
@@ -323,14 +353,8 @@ class HumanProductionCollector:
         self.auto_agents[key] = agent
         return agent
 
-    def step(self, model_action, human_values, decision_seconds):
-        model_action = np.array(model_action, dtype=float)
-        if model_action.shape[0] != len(ACTION_NAMES):
-            raise ValueError("生产企业动作必须是4个数。")
-
-        action = {TARGET_AGENT: model_action}
-        state_before_action = self.current_state().copy()
-        day_before_action = self.env.day
+    def _build_action(self, target_action):
+        action = {TARGET_AGENT: np.array(target_action, dtype=float)}
 
         for key in self.env.get_enterprise_execute():
             if key == TARGET_AGENT:
@@ -345,6 +369,21 @@ class HumanProductionCollector:
                 action[key] = FIXED_BANK_ACTION.copy()
             else:
                 action[key] = self._get_auto_agent(key).run_bank(self.state[key], self.new_ep)
+        return action
+
+    def _auto_target_action(self):
+        if self.auto_policy == "fixed":
+            return FIXED_ENTERPRISE_ACTION.copy()
+        return self._get_auto_agent(TARGET_AGENT).run_enterprise(self.state[TARGET_AGENT], self.new_ep)
+
+    def step(self, model_action, human_values, decision_seconds):
+        model_action = np.array(model_action, dtype=float)
+        if model_action.shape[0] != len(ACTION_NAMES):
+            raise ValueError("生产企业动作必须是4个数。")
+
+        action = self._build_action(model_action)
+        state_before_action = self.current_state().copy()
+        day_before_action = self.env.day
 
         self.history.append(
             {
@@ -360,6 +399,23 @@ class HumanProductionCollector:
         self.state = next_state
         self.new_ep = False
         return done, reward
+
+    def auto_step(self):
+        state_before_action = self.current_state().copy()
+        day_before_action = self.env.day
+        target_action = self._auto_target_action()
+        action = self._build_action(target_action)
+        self.env.step(action)
+        next_state, reward, done = self.env.observe()
+        self.state = next_state
+        self.new_ep = False
+        return {
+            "done": done,
+            "reward": reward,
+            "day": day_before_action,
+            "state": state_before_action,
+            "action": np.array(target_action, dtype=float),
+        }
 
     def _save_row(self, state, model_action, human_values, day, decision_seconds):
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
@@ -483,19 +539,19 @@ class CollectorApp(tk.Tk):
         self.state_table.column("name", width=520, anchor=tk.CENTER)
         self.state_table.column("value", width=180, anchor=tk.CENTER)
         self.state_table.column("change", width=180, anchor=tk.CENTER)
-        self.state_table.tag_configure("risk_high", background="#ffe0e0")
-        self.state_table.tag_configure("risk_medium", background="#fff2c2")
-        self.state_table.tag_configure("change_good", background="#e1f5e6")
-        self.state_table.tag_configure("change_bad", background="#ffe6e6")
+        self.state_table.tag_configure("risk_high", background="#e1f5e6")
+        self.state_table.tag_configure("risk_medium", background="#e1f5e6")
+        self.state_table.tag_configure("change_good", background="#ffe6e6")
+        self.state_table.tag_configure("change_bad", background="#e1f5e6")
         self.state_table.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
         action_frame = ttk.LabelFrame(self.main_frame, text="填写今天的决策", padding=10)
         action_frame.pack(fill=tk.X, padx=10)
         descriptions = [
             "0=不申请贷款；最大值=当前现金",
-            "直接填写希望采购的K数量",
-            "直接填写希望采购的L数量",
-            "直接填写希望设置的销售价格",
+            "直接填写希望采购的原料K数量",
+            "直接填写希望采购的原料L数量",
+            "直接填写希望设置的产品K销售价格",
         ]
         for idx, name in enumerate(ACTION_DISPLAY_NAMES):
             ttk.Label(action_frame, text=name).grid(row=0, column=idx, sticky=tk.W)
@@ -662,8 +718,12 @@ class CollectorApp(tk.Tk):
     def _change_text(self, key, value, previous_state):
         if previous_state is None:
             return "-"
+        if not isinstance(value, (int, float, np.integer, np.floating)):
+            return "-"
         previous = {row[3]: row[2] for row in display_rows(previous_state)}
         if key not in previous:
+            return "-"
+        if not isinstance(previous[key], (int, float, np.integer, np.floating)):
             return "-"
         delta = value - previous[key]
         if abs(delta) < 1e-9:
@@ -745,9 +805,9 @@ class CollectorApp(tk.Tk):
         price_base = raw_state_value(state, 6)
         hints = [
             f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-            f"当前K需求：{format_number(k_base)}；建议范围 {format_number(k_base * 0.5 if k_base else 0)} 到 {format_number(k_base * 1.5 if k_base else 10)}",
-            f"当前L需求：{format_number(l_base)}；建议范围 {format_number(l_base * 0.5 if l_base else 0)} 到 {format_number(l_base * 1.5 if l_base else 10)}",
-            f"当前预设价格：{format_number(price_base)}；建议范围 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)}",
+            f"原料K与原料L配套生产产品K，少的一种会卡住产量；当前K计划 {format_number(k_base)}，可填 {format_number(k_base * 0.5 if k_base else 0)} 到 {format_number(k_base * 1.5 if k_base else 10)}",
+            f"原料L与原料K配套生产产品K，少的一种会卡住产量；当前L计划 {format_number(l_base)}，可填 {format_number(l_base * 0.5 if l_base else 0)} 到 {format_number(l_base * 1.5 if l_base else 10)}",
+            f"这是产品K的出售价格；当前预设价格 {format_number(price_base)}，可填 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)}",
         ]
         for idx, text in enumerate(hints):
             self.action_hint_vars[idx].set(text)
