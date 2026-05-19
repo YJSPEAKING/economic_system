@@ -190,24 +190,41 @@ def weighted_average(pairs):
     return sum(price * num for price, num in pairs) / total_num
 
 
+def purchase_summary(local_pair, third_pair):
+    local_price, local_num = local_pair
+    third_price, third_num = third_pair
+    total_num = local_num + third_num
+    total_spend = local_price * local_num + third_price * third_num
+    return (
+        f"普通市场：买到 {format_number(local_num)}，单价 {format_number(local_price)}；"
+        f"第三方补充市场：买到 {format_number(third_num)}，单价 {format_number(third_price)}；"
+        f"合计 {format_number(total_num)}，花费 {format_number(total_spend)}"
+    )
+
+
+def market_price_summary(local_price, third_price):
+    cheaper = "普通市场" if local_price <= third_price else "第三方补充市场"
+    return (
+        f"普通市场单价 {format_number(local_price)}；"
+        f"第三方补充市场固定单价 {format_number(third_price)}。"
+        f"系统会先买更便宜的{cheaper}，买不够再买下一档。"
+    )
+
+
 def display_rows(state, day=None):
     is_first_day = day == 1
-    previous_text = "开局参考" if is_first_day else "上一天"
-    k_pairs = [
-        (raw_state_value(state, 13), raw_state_value(state, 14)),
-        (raw_state_value(state, 17), raw_state_value(state, 18)),
-    ]
-    l_pairs = [
-        (raw_state_value(state, 15), raw_state_value(state, 16)),
-        (raw_state_value(state, 19), raw_state_value(state, 20)),
-    ]
-    previous_k_bought = sum(num for _, num in k_pairs)
-    previous_l_bought = sum(num for _, num in l_pairs)
-    previous_k_avg_price = weighted_average(k_pairs)
-    previous_l_avg_price = weighted_average(l_pairs)
+    previous_text = "开局默认运行" if is_first_day else "上一天"
+    k_local_pair = (raw_state_value(state, 13), raw_state_value(state, 14))
+    l_local_pair = (raw_state_value(state, 15), raw_state_value(state, 16))
+    k_third_pair = (raw_state_value(state, 17), raw_state_value(state, 18))
+    l_third_pair = (raw_state_value(state, 19), raw_state_value(state, 20))
+    k_pairs = [k_local_pair, k_third_pair]
+    l_pairs = [l_local_pair, l_third_pair]
     previous_purchase_spend = sum(price * num for price, num in k_pairs + l_pairs)
-    k_prices = [raw_state_value(state, 29), raw_state_value(state, 30)]
-    l_prices = [raw_state_value(state, 31), raw_state_value(state, 32)]
+    k_local_price = raw_state_value(state, 29)
+    k_third_price = raw_state_value(state, 30)
+    l_local_price = raw_state_value(state, 31)
+    l_third_price = raw_state_value(state, 32)
     cash = raw_state_value(state, 0)
     payback = raw_state_value(state, 9)
     interest = raw_state_value(state, 10)
@@ -221,23 +238,21 @@ def display_rows(state, day=None):
     previous_price = raw_state_value(state, 5)
     previous_revenue = previous_sales * previous_price
     previous_net = previous_revenue - previous_purchase_spend
-    k_market = market_min(k_prices)
-    l_market = market_min(l_prices)
     return [
         ("总体", "当前现金（也是申请贷款金额上限）", cash, "cash"),
         ("总体", "今天需要还款（本金+利息）", debt_due, "debt_due"),
         ("总体", "目前总欠款", raw_state_value(state, 2), "debt"),
         ("总体", f"{previous_text}经营差额：收入 {format_number(previous_revenue)} - 原料采购支出 {format_number(previous_purchase_spend)}", previous_net, "previous_net"),
-        ("原料K", "原料K用途：与原料L配套投入生产，买到较少的一种会限制产品K产量", "生产公式：产品K = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
-        ("原料K", "当前原料K库存", "0（原料当天购买、当天投入生产，不跨天保存）", "k_inventory"),
-        ("原料K", "今天计划购买原料K数量", k_need, "k_need"),
-        ("原料K", "今天市场上原料K最低单价", k_market, "k_market"),
-        ("原料K", f"{previous_text}实际买到原料K数量 / 平均单价", f"{format_number(previous_k_bought)} / {format_number(previous_k_avg_price)}", "previous_k_bought"),
-        ("原料L", "原料L用途：与原料K配套投入生产，买到较少的一种会限制产品K产量", "生产公式：产品K = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
-        ("原料L", "当前原料L库存", "0（原料当天购买、当天投入生产，不跨天保存）", "l_inventory"),
-        ("原料L", "今天计划购买原料L数量", l_need, "l_need"),
-        ("原料L", "今天市场上原料L最低单价", l_market, "l_market"),
-        ("原料L", f"{previous_text}实际买到原料L数量 / 平均单价", f"{format_number(previous_l_bought)} / {format_number(previous_l_avg_price)}", "previous_l_bought"),
+        ("原料K", "原料K作用：和原料L配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
+        ("原料K", "当前未投入的原料K", "0（原料当天购买、当天投入生产，不跨天保存）", "k_inventory"),
+        ("原料K", "当前原料K参考采购量（你可在下方修改）", k_need, "k_need"),
+        ("原料K", "今天原料K可购买价格", market_price_summary(k_local_price, k_third_price), "k_market_detail"),
+        ("原料K", f"{previous_text}原料K成交结果", purchase_summary(k_local_pair, k_third_pair), "previous_k_trade"),
+        ("原料L", "原料L作用：和原料K配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
+        ("原料L", "当前未投入的原料L", "0（原料当天购买、当天投入生产，不跨天保存）", "l_inventory"),
+        ("原料L", "当前原料L参考采购量（你可在下方修改）", l_need, "l_need"),
+        ("原料L", "今天原料L可购买价格", market_price_summary(l_local_price, l_third_price), "l_market_detail"),
+        ("原料L", f"{previous_text}原料L成交结果", purchase_summary(l_local_pair, l_third_pair), "previous_l_trade"),
         ("产品K", "当前可出售的产品K库存", product_stock, "product_stock"),
         ("产品K", "今天产品K销售价格", price, "price"),
         ("产品K", f"{previous_text}产品K表现：售出数量（产出数量 {format_number(previous_output)}）", previous_sales, "sales"),
@@ -709,7 +724,7 @@ class CollectorApp(tk.Tk):
             previous_state = self.collector.history[-1]["state"]
         rows = display_rows(state, day=day)
         for group, name, value, key in rows:
-            tags = risk_tag(key, value, state) or row_change_tag(key, value, previous_state)
+            tags = row_change_tag(key, value, previous_state) or risk_tag(key, value, state)
             change = self._change_text(key, value, previous_state)
             self.state_table.insert("", tk.END, values=(group, name, format_number(value), change), tags=tags)
         mode = "只读查看" if readonly else "当前决策"
@@ -803,11 +818,13 @@ class CollectorApp(tk.Tk):
         k_base = raw_state_value(state, 11)
         l_base = raw_state_value(state, 12)
         price_base = raw_state_value(state, 6)
+        k_market = market_min([raw_state_value(state, 29), raw_state_value(state, 30)])
+        l_market = market_min([raw_state_value(state, 31), raw_state_value(state, 32)])
         hints = [
             f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-            f"原料K与原料L配套生产产品K，少的一种会卡住产量；当前K计划 {format_number(k_base)}，可填 {format_number(k_base * 0.5 if k_base else 0)} 到 {format_number(k_base * 1.5 if k_base else 10)}",
-            f"原料L与原料K配套生产产品K，少的一种会卡住产量；当前L计划 {format_number(l_base)}，可填 {format_number(l_base * 0.5 if l_base else 0)} 到 {format_number(l_base * 1.5 if l_base else 10)}",
-            f"这是产品K的出售价格；当前预设价格 {format_number(price_base)}，可填 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)}",
+            f"原料K要和原料L配套；参考K {format_number(k_base)}、L {format_number(l_base)}、今天K最低价 {format_number(k_market)}。K明显多于L时，多出的K可能无法变成产品。",
+            f"原料L要和原料K配套；参考L {format_number(l_base)}、K {format_number(k_base)}、今天L最低价 {format_number(l_market)}。L明显多于K时，多出的L可能无法变成产品。",
+            f"这是产品K的出售价格；参考当前价格 {format_number(price_base)} 和可出售库存，价格过高可能更难卖出。",
         ]
         for idx, text in enumerate(hints):
             self.action_hint_vars[idx].set(text)

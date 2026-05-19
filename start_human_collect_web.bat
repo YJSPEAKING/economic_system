@@ -3,7 +3,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 set "HUMAN_COLLECT_PASSWORD=1+"
-set "HUMAN_COLLECT_POLICY=td3"
+set "HUMAN_COLLECT_POLICY=fixed"
 set "CONDA_ENV_NAME=ppo"
 
 echo Starting human collection web system...

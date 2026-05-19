@@ -20,6 +20,7 @@ from real_System_remake.human_collect_production1 import (
     HumanProductionCollector,
     display_rows,
     format_number,
+    market_min,
     raw_state_value,
     risk_tag,
     row_change_tag,
@@ -88,11 +89,13 @@ def action_hints(state):
     k_base = raw_state_value(state, 11)
     l_base = raw_state_value(state, 12)
     price_base = raw_state_value(state, 6)
+    k_market = market_min([raw_state_value(state, 29), raw_state_value(state, 30)])
+    l_market = market_min([raw_state_value(state, 31), raw_state_value(state, 32)])
     return [
         f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-        f"原料K与原料L配套生产产品K，少的一种会卡住产量；当前K计划 {format_number(k_base)}，可填 {format_number(k_base * 0.5 if k_base else 0)} 到 {format_number(k_base * 1.5 if k_base else 10)}",
-        f"原料L与原料K配套生产产品K，少的一种会卡住产量；当前L计划 {format_number(l_base)}，可填 {format_number(l_base * 0.5 if l_base else 0)} 到 {format_number(l_base * 1.5 if l_base else 10)}",
-        f"这是产品K的出售价格；当前预设价格 {format_number(price_base)}，可填 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)}",
+        f"原料K要和原料L配套；参考K {format_number(k_base)}、L {format_number(l_base)}、今天K最低价 {format_number(k_market)}。K明显多于L时，多出的K可能无法变成产品。",
+        f"原料L要和原料K配套；参考L {format_number(l_base)}、K {format_number(k_base)}、今天L最低价 {format_number(l_market)}。L明显多于K时，多出的L可能无法变成产品。",
+        f"这是产品K的出售价格；参考当前价格 {format_number(price_base)} 和可出售库存，价格过高可能更难卖出。",
     ]
 
 
@@ -178,7 +181,7 @@ def serialize_state(collector, state=None, day=None, readonly=False, previous_st
         previous_state = collector.history[-1]["state"]
     rows = []
     for group, name, value, key in display_rows(state, day=day):
-        tags = list(risk_tag(key, value, state) or row_change_tag(key, value, previous_state))
+        tags = list(row_change_tag(key, value, previous_state) or risk_tag(key, value, state))
         rows.append(
             {
                 "group": group,
