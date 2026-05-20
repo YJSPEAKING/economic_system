@@ -18,7 +18,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class TrajectorySequenceStore:
-    def __init__(self, seq_len, max_episodes=2000):
+    def __init__(self, seq_len, max_episodes=12000):
         self.seq_len = max(1, int(seq_len))
         self.max_episodes = max_episodes
         self.episodes = OrderedDict()
