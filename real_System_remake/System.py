@@ -1,6 +1,8 @@
 ﻿import os
 import sys
 import io
+import csv
+from datetime import datetime
 
 os.environ["PYTHONUTF8"] = "1"
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -48,6 +50,12 @@ use_wandb = True
 stable_at = 8000
 end_at = 100000
 use_rbtree = False
+
+ACTOR_CHECKPOINT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frozen_actors")
+EXCELLENT_SURVIVAL_DAYS = 90
+STABLE_SURVIVAL_WINDOW = 100
+STABLE_MIN_GOOD_RATE = 0.8
+STABLE_SAVE_MIN_AVG_IMPROVEMENT = 0.5
 # Notice 如果修改lstm的隐藏层节点数量，需要去经验池get batch函数里同步修改
 enterprise_ddpg_config = Config(
     scope='',
@@ -133,6 +141,10 @@ enterprise_add_list = {
 }
 
 
+def _cpu_state_dict(module):
+    return {key: value.detach().cpu().clone() for key, value in module.state_dict().items()}
+
+
 class System:
     def __init__(self, seed=None):
         self.seed = CURRENT_SEED if seed is None else int(seed)
@@ -155,6 +167,193 @@ class System:
         self.Agent = {}
         for key in self.execute:
             self.Agent[key] = None
+        self.survival_history = []
+        self.best_candidate_survival = -1
+        self.best_stable_avg_survival = -1.0
+        self.best_stable_good_rate = 0.0
+
+    def _background_actor_payload(self, kind, episode, survival_days, recent_survival_days=None,
+                                  stable_avg_survival=None, stable_good_rate=None):
+        if self.Agent.get('consumption1') is None or self.Agent.get('bank1') is None:
+            raise RuntimeError("消费企业或银行智能体尚未初始化，无法保存Actor权重。")
+
+        consumption_td3 = self.Agent['consumption1'].enterprise
+        bank_td3 = self.Agent['bank1'].bank
+        recent_survival_days = list(recent_survival_days or [])
+        metadata = {
+            "kind": kind,
+            "seed": self.seed,
+            "episode": episode,
+            "epiday": self.epiday,
+            "survival_days": survival_days,
+            "excellent_survival_days": EXCELLENT_SURVIVAL_DAYS,
+            "stable_window": STABLE_SURVIVAL_WINDOW,
+            "stable_avg_survival": stable_avg_survival,
+            "stable_good_rate": stable_good_rate,
+            "stable_min_good_rate": STABLE_MIN_GOOD_RATE,
+            "recent_survival_days": recent_survival_days,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "note": "用于人类行为采集时初始化并冻结 consumption1 与 bank1 的Actor；采集时应关闭探索噪声。",
+        }
+        return {
+            "metadata": metadata,
+            "actors": {
+                "consumption1": {
+                    "state_dim": consumption_td3.s_dim,
+                    "action_dim": consumption_td3.a_dim,
+                    "action_bound": consumption_td3.a_bound,
+                    "actor_state_dict": _cpu_state_dict(consumption_td3.actor),
+                },
+                "bank1": {
+                    "state_dim": bank_td3.s_dim,
+                    "action_dim": bank_td3.a_dim,
+                    "action_bound": bank_td3.a_bound,
+                    "actor_state_dict": _cpu_state_dict(bank_td3.actor),
+                },
+            },
+        }
+
+    def _append_actor_checkpoint_index(self, metadata, paths):
+        os.makedirs(ACTOR_CHECKPOINT_ROOT, exist_ok=True)
+        index_path = os.path.join(ACTOR_CHECKPOINT_ROOT, "checkpoint_index.csv")
+        exists = os.path.exists(index_path)
+        columns = [
+            "created_at",
+            "kind",
+            "seed",
+            "episode",
+            "epiday",
+            "survival_days",
+            "stable_window",
+            "stable_avg_survival",
+            "stable_good_rate",
+            "combined_path",
+            "consumption_actor_path",
+            "bank_actor_path",
+        ]
+        with open(index_path, "a", newline="", encoding="utf-8-sig") as file:
+            writer = csv.DictWriter(file, fieldnames=columns)
+            if not exists:
+                writer.writeheader()
+            writer.writerow({
+                "created_at": metadata["created_at"],
+                "kind": metadata["kind"],
+                "seed": metadata["seed"],
+                "episode": metadata["episode"],
+                "epiday": metadata["epiday"],
+                "survival_days": metadata["survival_days"],
+                "stable_window": metadata["stable_window"],
+                "stable_avg_survival": metadata["stable_avg_survival"],
+                "stable_good_rate": metadata["stable_good_rate"],
+                "combined_path": paths["combined"],
+                "consumption_actor_path": paths["consumption1"],
+                "bank_actor_path": paths["bank1"],
+            })
+
+    def _save_background_actors(self, kind, episode, survival_days, recent_survival_days=None,
+                                stable_avg_survival=None, stable_good_rate=None):
+        payload = self._background_actor_payload(
+            kind=kind,
+            episode=episode,
+            survival_days=survival_days,
+            recent_survival_days=recent_survival_days,
+            stable_avg_survival=stable_avg_survival,
+            stable_good_rate=stable_good_rate,
+        )
+        seed_dir = os.path.join(ACTOR_CHECKPOINT_ROOT, f"seed_{self.seed}")
+        os.makedirs(seed_dir, exist_ok=True)
+
+        combined_path = os.path.join(seed_dir, f"seed_{self.seed}_{kind}_background_actors.pth")
+        consumption_path = os.path.join(seed_dir, f"seed_{self.seed}_{kind}_consumption1_actor.pth")
+        bank_path = os.path.join(seed_dir, f"seed_{self.seed}_{kind}_bank1_actor.pth")
+
+        torch.save(payload, combined_path)
+        torch.save(
+            {"metadata": payload["metadata"], "agent": "consumption1", **payload["actors"]["consumption1"]},
+            consumption_path,
+        )
+        torch.save(
+            {"metadata": payload["metadata"], "agent": "bank1", **payload["actors"]["bank1"]},
+            bank_path,
+        )
+
+        paths = {
+            "combined": combined_path,
+            "consumption1": consumption_path,
+            "bank1": bank_path,
+        }
+
+        if kind == "stable":
+            alias_paths = {
+                "combined": os.path.join(seed_dir, f"seed_{self.seed}_background_actors.pth"),
+                "consumption1": os.path.join(seed_dir, f"seed_{self.seed}_consumption1_actor.pth"),
+                "bank1": os.path.join(seed_dir, f"seed_{self.seed}_bank1_actor.pth"),
+            }
+            torch.save(payload, alias_paths["combined"])
+            torch.save(
+                {"metadata": payload["metadata"], "agent": "consumption1", **payload["actors"]["consumption1"]},
+                alias_paths["consumption1"],
+            )
+            torch.save(
+                {"metadata": payload["metadata"], "agent": "bank1", **payload["actors"]["bank1"]},
+                alias_paths["bank1"],
+            )
+            paths.update(alias_paths)
+
+        self._append_actor_checkpoint_index(payload["metadata"], paths)
+        avg_text = "" if stable_avg_survival is None else f"，近{STABLE_SURVIVAL_WINDOW}回合平均{stable_avg_survival:.2f}天"
+        rate_text = "" if stable_good_rate is None else f"，达标率{stable_good_rate:.2%}"
+        print(f"[OK] 已保存{kind}背景Actor：seed={self.seed}，episode={episode}，存活{survival_days}天{avg_text}{rate_text}")
+        print(f"   合并权重：{combined_path}")
+        return paths
+
+    def _record_survival_and_maybe_save_actors(self, episode, survival_days):
+        self.survival_history.append(int(survival_days))
+
+        if survival_days >= EXCELLENT_SURVIVAL_DAYS and survival_days > self.best_candidate_survival:
+            self.best_candidate_survival = survival_days
+            self._save_background_actors(
+                kind="candidate",
+                episode=episode,
+                survival_days=survival_days,
+                recent_survival_days=self.survival_history[-STABLE_SURVIVAL_WINDOW:],
+            )
+
+        if len(self.survival_history) < STABLE_SURVIVAL_WINDOW:
+            return
+
+        recent = self.survival_history[-STABLE_SURVIVAL_WINDOW:]
+        stable_avg = float(np.mean(recent))
+        stable_good_rate = sum(day >= EXCELLENT_SURVIVAL_DAYS for day in recent) / STABLE_SURVIVAL_WINDOW
+        if stable_avg < EXCELLENT_SURVIVAL_DAYS or stable_good_rate < STABLE_MIN_GOOD_RATE:
+            return
+
+        should_save = self.best_stable_avg_survival < 0
+        should_save = should_save or stable_avg >= self.best_stable_avg_survival + STABLE_SAVE_MIN_AVG_IMPROVEMENT
+        should_save = should_save or (
+            abs(stable_avg - self.best_stable_avg_survival) < 1e-9
+            and stable_good_rate > self.best_stable_good_rate
+        )
+        if not should_save:
+            return
+
+        self.best_stable_avg_survival = stable_avg
+        self.best_stable_good_rate = stable_good_rate
+        self._save_background_actors(
+            kind="stable",
+            episode=episode,
+            survival_days=survival_days,
+            recent_survival_days=recent,
+            stable_avg_survival=stable_avg,
+            stable_good_rate=stable_good_rate,
+        )
+
+        if use_wandb:
+            wandb.log({
+                "优秀背景Actor/近百回合平均存活天数": stable_avg,
+                "优秀背景Actor/近百回合90天达标率": stable_good_rate,
+                "优秀背景Actor/保存回合": episode,
+            })
 
     def run(self):
 
@@ -285,6 +484,9 @@ class System:
                 state = next_state
                 last_action = action
                 last_reward_pro = reward_pro
+
+            survival_days = int(self.env.day)
+            self._record_survival_and_maybe_save_actors(episode, survival_days)
 
         # self.env.finish()
 
