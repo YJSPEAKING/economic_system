@@ -25,6 +25,7 @@ import copy
 import atexit
 import random
 import gc
+import time
 import torch
 import torch.nn as nn
 try:
@@ -179,6 +180,8 @@ class System:
         for episode in range(10000):
             if self.epiday > 180000 and episode % 100 == 0:
                 break
+            episode_started_at = time.perf_counter()
+            episode_day_count = 0
             state = self.env.reset()
             last_state = None
             last_action = None
@@ -199,19 +202,26 @@ class System:
                     self.Agent[target_key] = bank_nnu(config)
             new_ep = True
             while True:
+                day_started_at = time.perf_counter()
                 action = {}
                 reward_pro = {}
                 # TD3
+                decision_started_at = time.perf_counter()
                 for target_key in self.e_execute:
                     action[target_key] = self.Agent[target_key].run_enterprise(state[target_key], new_ep)
                 for target_key in self.b_execute:
                     action[target_key] = self.Agent[target_key].run_bank(state[target_key], new_ep)
+                decision_elapsed = time.perf_counter() - decision_started_at
 
                 new_ep = False
                 self.epiday = self.epiday + 1
+                episode_day_count += 1
 
+                env_started_at = time.perf_counter()
                 self.env.step(action)
                 next_state, reward, done = self.env.observe()
+                env_elapsed = time.perf_counter() - env_started_at
+                feedback_started_at = time.perf_counter()
 
                 # done的情况下，因为已知state 和 state_，reward为破产惩罚，处理逻辑不需要时序错峰
                 if done:
@@ -243,6 +253,20 @@ class System:
                                                        # reward_pro = reward_pro[target_key],
                                                        is_end=done
                                                        )
+                    feedback_elapsed = time.perf_counter() - feedback_started_at
+                    day_elapsed = time.perf_counter() - day_started_at
+                    episode_elapsed = time.perf_counter() - episode_started_at
+                    if use_wandb:
+                        wandb.log({
+                            '运行效率/每天完整耗时_秒': day_elapsed,
+                            '运行效率/每天动作决策耗时_秒': decision_elapsed,
+                            '运行效率/每天环境推进耗时_秒': env_elapsed,
+                            '运行效率/每天训练反馈耗时_秒': feedback_elapsed,
+                            '运行效率/每天吞吐_天每秒': 1.0 / max(day_elapsed, 1e-9),
+                            '运行效率/每回合完整耗时_秒': episode_elapsed,
+                            '运行效率/每回合平均每天耗时_秒': episode_elapsed / max(episode_day_count, 1),
+                            '运行效率/每回合吞吐_天每秒': episode_day_count / max(episode_elapsed, 1e-9),
+                        })
                     break
                 else:
                     # 关键一步 时序错峰，详见时序错峰.png
@@ -272,6 +296,8 @@ class System:
                                                            # reward_pro=last_reward_pro[target_key],
                                                            is_end=done
                                                            )
+                    feedback_elapsed = time.perf_counter() - feedback_started_at
+                    day_elapsed = time.perf_counter() - day_started_at
 
                 if use_wandb:
                     # 1. bank1 没有被修改，依然用 3 个变量接收
@@ -294,6 +320,13 @@ class System:
 
                     if 'production1' in self.Agent:
                         wandb.log({'GAIL_Internal_Reward/pro1': int_r_pro1})
+                    wandb.log({
+                        '运行效率/每天完整耗时_秒': day_elapsed,
+                        '运行效率/每天动作决策耗时_秒': decision_elapsed,
+                        '运行效率/每天环境推进耗时_秒': env_elapsed,
+                        '运行效率/每天训练反馈耗时_秒': feedback_elapsed,
+                        '运行效率/每天吞吐_天每秒': 1.0 / max(day_elapsed, 1e-9),
+                    })
 
                 # for target_key in self.e_execute:
                 #     print('after_'+target_key+'ra_action', reward_pro[target_key])

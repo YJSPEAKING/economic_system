@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 import re
@@ -61,6 +62,7 @@ def session_paths(participant_id, session_id):
     return (
         os.path.join(WEB_DATA_DIR, f"{prefix}_expert.csv"),
         os.path.join(WEB_DATA_DIR, f"{prefix}_meta.csv"),
+        os.path.join(WEB_DATA_DIR, f"{prefix}_summary.csv"),
     )
 
 
@@ -216,6 +218,62 @@ def session_stats(session):
         "avg_seconds": round(avg, 3),
         "throughput_per_minute": round(throughput, 3),
     }
+
+
+def write_episode_summary(session, status, survival_days=None):
+    durations = list(session.get("episode_durations", []))
+    if not durations:
+        return
+    summary_path = session["summary_output_path"]
+    os.makedirs(os.path.dirname(summary_path), exist_ok=True)
+    exists = os.path.exists(summary_path)
+    total_seconds = sum(durations)
+    count = len(durations)
+    avg_seconds = total_seconds / count if count else 0.0
+    throughput = count / (total_seconds / 60) if total_seconds > 0 else 0.0
+    wall_seconds = time.perf_counter() - session.get("episode_started_at", session["started_at"])
+    wall_throughput = count / (wall_seconds / 60) if wall_seconds > 0 else 0.0
+    collector = session["collector"]
+
+    columns = [
+        "participant_id",
+        "seed",
+        "episode",
+        "status",
+        "survival_days",
+        "human_decision_days",
+        "episode_decision_seconds",
+        "avg_seconds_per_decision",
+        "decisions_per_minute",
+        "episode_wall_seconds",
+        "wall_decisions_per_minute",
+        "rows_saved_total",
+        "auto_policy",
+        "expert_output_path",
+        "meta_output_path",
+    ]
+    with open(summary_path, "a", newline="", encoding="utf-8-sig") as file:
+        writer = csv.DictWriter(file, fieldnames=columns)
+        if not exists:
+            writer.writeheader()
+        writer.writerow({
+            "participant_id": session["participant_id"],
+            "seed": collector.seed,
+            "episode": collector.env.episode,
+            "status": status,
+            "survival_days": survival_days if survival_days is not None else collector.env.day,
+            "human_decision_days": count,
+            "episode_decision_seconds": round(total_seconds, 3),
+            "avg_seconds_per_decision": round(avg_seconds, 3),
+            "decisions_per_minute": round(throughput, 3),
+            "episode_wall_seconds": round(wall_seconds, 3),
+            "wall_decisions_per_minute": round(wall_throughput, 3),
+            "rows_saved_total": collector.rows_saved,
+            "auto_policy": session["auto_policy"],
+            "expert_output_path": session["output_path"],
+            "meta_output_path": session["meta_output_path"],
+        })
+    session["episode_summary_written"] = True
 
 
 def decision_metrics(state):
@@ -677,7 +735,7 @@ def api_start(payload):
     if auto_policy not in {"td3", "fixed"}:
         raise ValueError("auto_policy 只能是 td3 或 fixed。")
     session_id = uuid.uuid4().hex
-    output_path, meta_output_path = session_paths(participant_id, session_id)
+    output_path, meta_output_path, summary_output_path = session_paths(participant_id, session_id)
     collector = HumanProductionCollector(
         seed=DEFAULT_SEED,
         output_path=output_path,
@@ -692,10 +750,14 @@ def api_start(payload):
         "started_at": time.perf_counter(),
         "decision_started_at": time.perf_counter(),
         "durations": [],
+        "episode_durations": [],
         "participant_id": participant_id,
         "auto_policy": auto_policy,
         "output_path": output_path,
         "meta_output_path": meta_output_path,
+        "summary_output_path": summary_output_path,
+        "episode_started_at": time.perf_counter(),
+        "episode_summary_written": False,
         "block_start_day": collector.env.day,
         "human_days_in_block": 0,
         "last_skip_reason": None,
@@ -708,6 +770,7 @@ def api_start(payload):
         "block": block_status(session),
         "output_path": output_path,
         "meta_output_path": meta_output_path,
+        "summary_output_path": summary_output_path,
     }
 
 
@@ -722,6 +785,7 @@ def api_step(payload):
         now = time.perf_counter()
         decision_seconds = now - session["decision_started_at"]
         session["durations"].append(decision_seconds)
+        session["episode_durations"].append(decision_seconds)
         done, _ = collector.step(model_action, values, decision_seconds)
         session["human_days_in_block"] = int(session.get("human_days_in_block", 0)) + 1
         previous = serialize_state(collector, state_before, day_before, readonly=True)
@@ -737,6 +801,7 @@ def api_step(payload):
         if done:
             result["survival_days"] = collector.env.day
             result["state"] = serialize_state(collector, state_before, day_before, readonly=True)
+            write_episode_summary(session, "episode_done", survival_days=collector.env.day)
         else:
             result["state"] = serialize_state(collector)
         return result
@@ -787,6 +852,7 @@ def api_skip_to_next_block(payload):
         if done:
             result["survival_days"] = collector.env.day
             result["state"] = serialize_state(collector)
+            write_episode_summary(session, "episode_done_during_auto_skip", survival_days=collector.env.day)
         else:
             result["state"] = serialize_state(collector, previous_state_override=previous_state)
         return result
@@ -796,8 +862,13 @@ def api_next_episode(payload):
     session = get_session(payload.get("session_id"))
     with session["lock"]:
         collector = session["collector"]
+        if session.get("episode_durations") and not session.get("episode_summary_written"):
+            write_episode_summary(session, "next_episode_before_done", survival_days=collector.env.day)
         collector.start_episode()
         session["decision_started_at"] = time.perf_counter()
+        session["episode_started_at"] = time.perf_counter()
+        session["episode_durations"] = []
+        session["episode_summary_written"] = False
         session["block_start_day"] = collector.env.day
         session["human_days_in_block"] = 0
         session["last_skip_reason"] = None
@@ -808,6 +879,8 @@ def api_end(payload):
     session_id = payload.get("session_id")
     session = get_session(session_id)
     with session["lock"]:
+        if session.get("episode_durations") and not session.get("episode_summary_written"):
+            write_episode_summary(session, "ended_by_user", survival_days=session["collector"].env.day)
         stats = session_stats(session)
     with SESSIONS_LOCK:
         SESSIONS.pop(session_id, None)
