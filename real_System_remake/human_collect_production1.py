@@ -196,8 +196,8 @@ def purchase_summary(local_pair, third_pair):
     total_num = local_num + third_num
     total_spend = local_price * local_num + third_price * third_num
     return (
-        f"普通市场：买到 {format_number(local_num)}，单价 {format_number(local_price)}；"
-        f"第三方补充市场：买到 {format_number(third_num)}，单价 {format_number(third_price)}；"
+        f"普通市场：买到 {format_number(local_num)}，单价 {format_number(local_price)}\n"
+        f"第三方补充市场：买到 {format_number(third_num)}，单价 {format_number(third_price)}\n"
         f"合计 {format_number(total_num)}，花费 {format_number(total_spend)}"
     )
 
@@ -205,8 +205,7 @@ def purchase_summary(local_pair, third_pair):
 def market_price_summary(local_price, third_price):
     cheaper = "普通市场" if local_price <= third_price else "第三方补充市场"
     return (
-        f"普通市场单价 {format_number(local_price)}；"
-        f"第三方补充市场固定单价 {format_number(third_price)}。"
+        f"普通市场单价 {format_number(local_price)}；第三方补充市场固定单价 {format_number(third_price)}。\n"
         f"系统会先买更便宜的{cheaper}，买不够再买下一档。"
     )
 
@@ -243,13 +242,11 @@ def display_rows(state, day=None):
         ("总体", "今天需要还款（本金+利息）", debt_due, "debt_due"),
         ("总体", "目前总欠款", raw_state_value(state, 2), "debt"),
         ("总体", f"{previous_text}经营差额：收入 {format_number(previous_revenue)} - 原料采购支出 {format_number(previous_purchase_spend)}", previous_net, "previous_net"),
-        ("原料K", "原料K作用：和原料L配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
-        ("原料K", "当前未投入的原料K", "0（原料当天购买、当天投入生产，不跨天保存）", "k_inventory"),
+        ("原料K", "原料K作用：和原料L配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)\n原料当天购买、当天投入生产，不跨天保存。", "production_rule"),
         ("原料K", "当前原料K参考采购量（你可在下方修改）", k_need, "k_need"),
         ("原料K", "今天原料K可购买价格", market_price_summary(k_local_price, k_third_price), "k_market_detail"),
         ("原料K", f"{previous_text}原料K成交结果", purchase_summary(k_local_pair, k_third_pair), "previous_k_trade"),
-        ("原料L", "原料L作用：和原料K配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)", "production_rule"),
-        ("原料L", "当前未投入的原料L", "0（原料当天购买、当天投入生产，不跨天保存）", "l_inventory"),
+        ("原料L", "原料L作用：和原料K配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)\n原料当天购买、当天投入生产，不跨天保存。", "production_rule"),
         ("原料L", "当前原料L参考采购量（你可在下方修改）", l_need, "l_need"),
         ("原料L", "今天原料L可购买价格", market_price_summary(l_local_price, l_third_price), "l_market_detail"),
         ("原料L", f"{previous_text}原料L成交结果", purchase_summary(l_local_pair, l_third_pair), "previous_l_trade"),
@@ -818,12 +815,10 @@ class CollectorApp(tk.Tk):
         k_base = raw_state_value(state, 11)
         l_base = raw_state_value(state, 12)
         price_base = raw_state_value(state, 6)
-        k_market = market_min([raw_state_value(state, 29), raw_state_value(state, 30)])
-        l_market = market_min([raw_state_value(state, 31), raw_state_value(state, 32)])
         hints = [
             f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-            f"原料K要和原料L配套；参考K {format_number(k_base)}、L {format_number(l_base)}、今天K最低价 {format_number(k_market)}。K明显多于L时，多出的K可能无法变成产品。",
-            f"原料L要和原料K配套；参考L {format_number(l_base)}、K {format_number(k_base)}、今天L最低价 {format_number(l_market)}。L明显多于K时，多出的L可能无法变成产品。",
+            f"原料K要和原料L配套；上一回合K参考量 {format_number(k_base)}、L参考量 {format_number(l_base)}。K明显多于L时，多出的K可能无法变成产品。",
+            f"原料L要和原料K配套；上一回合L参考量 {format_number(l_base)}、K参考量 {format_number(k_base)}。L明显多于K时，多出的L可能无法变成产品。",
             f"这是产品K的出售价格；参考当前价格 {format_number(price_base)} 和可出售库存，价格过高可能更难卖出。",
         ]
         for idx, text in enumerate(hints):

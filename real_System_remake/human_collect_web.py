@@ -20,7 +20,6 @@ from real_System_remake.human_collect_production1 import (
     HumanProductionCollector,
     display_rows,
     format_number,
-    market_min,
     raw_state_value,
     risk_tag,
     row_change_tag,
@@ -33,28 +32,18 @@ SERVER_AUTO_POLICY = os.environ.get("HUMAN_COLLECT_POLICY", DEFAULT_AUTO_POLICY)
 ACCESS_PASSWORD = os.environ.get("HUMAN_COLLECT_PASSWORD", "")
 WEB_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "human_collect_web_data")
 BLOCK_MIN_HUMAN_DAYS = 8
-DECISION_BLOCKS = [
-    {
-        "start": 1,
-        "title": "开局连续决策",
-        "reason": "开局阶段决定贷款、采购和定价的初始方向，会影响企业后续能否稳定运转。",
-    },
-    {
-        "start": 15,
-        "title": "早中期经营片段",
-        "reason": "企业已经经历了一段自动经营，现金、债务和库存可能发生变化，需要重新判断采购和价格。",
-    },
-    {
-        "start": 40,
-        "title": "中期经营片段",
-        "reason": "中期阶段的还款压力、产品库存和市场价格更复杂，需要观察人在压力较高时如何调整经营。",
-    },
-    {
-        "start": 70,
-        "title": "后期经营片段",
-        "reason": "如果企业能存活到后期，这里用于观察长期经营后的保守或激进决策。",
-    },
-]
+DYNAMIC_SKIP_MAX_DAYS = 15
+DYNAMIC_REL_CHANGE = 0.25
+DYNAMIC_PRICE_REL_CHANGE = 0.15
+DYNAMIC_ABS_CHANGE = {
+    "现金": 50.0,
+    "产品库存": 10.0,
+    "总欠款": 50.0,
+    "今日还款": 20.0,
+    "原料K参考采购量": 2.0,
+    "原料L参考采购量": 2.0,
+    "产品K销售价格": 1.0,
+}
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
 
@@ -89,12 +78,10 @@ def action_hints(state):
     k_base = raw_state_value(state, 11)
     l_base = raw_state_value(state, 12)
     price_base = raw_state_value(state, 6)
-    k_market = market_min([raw_state_value(state, 29), raw_state_value(state, 30)])
-    l_market = market_min([raw_state_value(state, 31), raw_state_value(state, 32)])
     return [
         f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-        f"原料K要和原料L配套；参考K {format_number(k_base)}、L {format_number(l_base)}、今天K最低价 {format_number(k_market)}。K明显多于L时，多出的K可能无法变成产品。",
-        f"原料L要和原料K配套；参考L {format_number(l_base)}、K {format_number(k_base)}、今天L最低价 {format_number(l_market)}。L明显多于K时，多出的L可能无法变成产品。",
+        f"原料K要和原料L配套；上一回合K参考量 {format_number(k_base)}、L参考量 {format_number(l_base)}。K明显多于L时，多出的K可能无法变成产品。",
+        f"原料L要和原料K配套；上一回合L参考量 {format_number(l_base)}、K参考量 {format_number(k_base)}。L明显多于K时，多出的L可能无法变成产品。",
         f"这是产品K的出售价格；参考当前价格 {format_number(price_base)} 和可出售库存，价格过高可能更难卖出。",
     ]
 
@@ -231,17 +218,39 @@ def session_stats(session):
     }
 
 
-def current_block(session):
-    index = session.get("block_index", 0)
-    index = max(0, min(index, len(DECISION_BLOCKS) - 1))
-    return DECISION_BLOCKS[index]
+def decision_metrics(state):
+    return {
+        "现金": raw_state_value(state, 0),
+        "产品库存": raw_state_value(state, 1),
+        "总欠款": raw_state_value(state, 2),
+        "今日还款": raw_state_value(state, 9) + raw_state_value(state, 10),
+        "原料K参考采购量": raw_state_value(state, 11),
+        "原料L参考采购量": raw_state_value(state, 12),
+        "产品K销售价格": raw_state_value(state, 6),
+    }
 
 
-def next_block_after(day):
-    for index, block in enumerate(DECISION_BLOCKS):
-        if block["start"] > day:
-            return index, block
-    return None, None
+def metric_change_reasons(anchor_state, current_state):
+    old = decision_metrics(anchor_state)
+    new = decision_metrics(current_state)
+    reasons = []
+    for name, old_value in old.items():
+        new_value = new[name]
+        diff = new_value - old_value
+        abs_diff = abs(diff)
+        if abs_diff <= 1e-9:
+            continue
+        abs_threshold = DYNAMIC_ABS_CHANGE.get(name, 1.0)
+        rel_threshold = DYNAMIC_PRICE_REL_CHANGE if "价格" in name else DYNAMIC_REL_CHANGE
+        base = max(abs(old_value), 1.0)
+        rel_change = abs_diff / base
+        if abs_diff >= abs_threshold or rel_change >= rel_threshold:
+            direction = "增加" if diff > 0 else "减少"
+            reasons.append(
+                f"{name}{direction}{format_number(abs_diff)}"
+                f"（从{format_number(old_value)}到{format_number(new_value)}）"
+            )
+    return reasons
 
 
 def block_status(session):
@@ -249,22 +258,21 @@ def block_status(session):
     day = int(collector.env.day)
     manual_days = int(session.get("human_days_in_block", 0))
     remaining = max(0, BLOCK_MIN_HUMAN_DAYS - manual_days)
-    next_index, next_block = next_block_after(day)
-    can_skip = remaining == 0 and next_block is not None
-    block = current_block(session)
+    can_skip = remaining == 0 and day < collector.env.lim_day - 1
+    last_skip_reason = session.get("last_skip_reason")
     return {
         "day": day,
-        "block_index": session.get("block_index", 0),
-        "block_title": block["title"],
-        "block_start": session.get("block_start_day", block["start"]),
-        "block_reason": block["reason"],
+        "block_title": "连续人工决策阶段",
+        "block_start": session.get("block_start_day", day),
+        "block_reason": "先连续采集一小段真实人工决策，再让系统自动推进到经营状态明显变化的位置。",
         "manual_days_in_block": manual_days,
         "min_human_days": BLOCK_MIN_HUMAN_DAYS,
         "remaining_before_skip": remaining,
         "can_skip": can_skip,
-        "next_block_start": next_block["start"] if next_block else None,
-        "next_block_title": next_block["title"] if next_block else None,
-        "next_block_reason": next_block["reason"] if next_block else "当前已经没有预设的下一段，可以继续手动决策或结束采集。",
+        "next_block_start": None,
+        "next_block_title": "状态变化触发点",
+        "next_block_reason": last_skip_reason or "跳过后，系统会自动运行到现金、债务、库存、采购参考量或销售价格出现明显变化的一天，再交回给你决策。",
+        "dynamic_skip_max_days": DYNAMIC_SKIP_MAX_DAYS,
     }
 
 
@@ -282,6 +290,10 @@ HTML = r"""<!doctype html>
     .intro { text-align: center; padding: 60px 28px; }
     .intro h1 { margin: 0 0 18px; font-size: 30px; }
     .intro p { max-width: 760px; margin: 12px auto; line-height: 1.8; font-size: 16px; }
+    .flow { max-width: 900px; margin: 28px auto 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: stretch; }
+    .flow-step { border: 1px solid #cbd5df; background: #f8fbff; border-radius: 8px; padding: 14px 12px; text-align: center; line-height: 1.55; }
+    .flow-step strong { display: block; color: #18324a; margin-bottom: 4px; }
+    .role-box { max-width: 900px; margin: 20px auto 0; border: 1px solid #cfe0f5; background: #f3f8ff; border-radius: 8px; padding: 14px; line-height: 1.7; text-align: left; }
     .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     input { height: 34px; border: 1px solid #cbd5df; border-radius: 6px; padding: 0 10px; font-size: 15px; }
     button { height: 36px; border: 0; border-radius: 6px; padding: 0 14px; background: #1f6feb; color: white; cursor: pointer; font-size: 14px; }
@@ -293,6 +305,7 @@ HTML = r"""<!doctype html>
     th { background: #eef3f8; font-weight: 600; }
     tr.risk_high td, tr.risk_medium td, tr.change_bad td { background: #e2f6e8; }
     tr.change_good td { background: #ffe6e6; }
+    td { white-space: pre-line; line-height: 1.55; }
     .actions { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 14px; }
     .action-card { border: 1px solid #dde3ea; border-radius: 8px; padding: 12px; }
     .action-card label { display: block; font-weight: 600; margin-bottom: 8px; }
@@ -309,15 +322,27 @@ HTML = r"""<!doctype html>
     .busy.show { display: flex; }
     .spinner { width: 42px; height: 42px; border: 5px solid #c9d7e6; border-top-color: #1f6feb; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 820px) { .flow { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header><strong>生产企业人类专家数据采集</strong></header>
   <main>
     <section id="intro" class="panel intro">
-      <h1>任务目标</h1>
-      <p>你将扮演“生产企业”的经营决策者。每天系统会展示企业现金、债务、还款压力、采购需求和市场价格等关键信息。</p>
-      <p>请填写今天希望申请的贷款金额、原料K采购需求、原料L采购需求和产品K销售价格。目标不是某一天赚最多，而是尽量让企业活得更久、经营更稳定。</p>
+      <h1>任务描述</h1>
+      <p>这个系统中有生产企业、消费企业、银行、普通市场和第三方补充市场。你扮演的是生产企业的经营者，其他主体由系统自动运行。</p>
+      <p>目标不是某一天赚最多，而是尽量让企业活得更久、经营更稳定。</p>
+      <div class="flow" aria-label="每天运行流程">
+        <div class="flow-step"><strong>1. 查看今天状态</strong>现金、欠款、库存、还款压力和上一天经营结果会先展示给你。</div>
+        <div class="flow-step"><strong>2. 你做经营决策</strong>你只控制生产企业，填写贷款金额、原料K、原料L和产品K销售价格。</div>
+        <div class="flow-step"><strong>3. 银行处理贷款</strong>银行根据系统状态决定实际发放给企业的贷款。</div>
+        <div class="flow-step"><strong>4. 市场购买原料</strong>企业用现金购买原料K和原料L，普通市场买不够时会使用第三方补充市场。</div>
+        <div class="flow-step"><strong>5. 生产并销售产品K</strong>K和L配套投入生产，较少的一种会限制产品K产量，产品K再进入市场销售。</div>
+        <div class="flow-step"><strong>6. 还款并进入下一天</strong>系统结算收入、成本和债务；现金不足以还债时，企业会破产，本回合结束。</div>
+      </div>
+      <div class="role-box">
+        你只需要关注自己的经营决策：要不要借钱、买多少K和L、产品K卖什么价格。
+      </div>
       <div class="row" style="justify-content:center;margin-top:24px">
         <label>参与者编号（可选） <input id="participant" value="anonymous" /></label>
         <label>访问口令（如有） <input id="accessPassword" type="password" /></label>
@@ -336,7 +361,7 @@ HTML = r"""<!doctype html>
 
       <div class="panel">
         <table>
-          <thead><tr><th>信息</th><th>参考数值</th><th>相对上一天</th></tr></thead>
+          <thead><tr><th>信息（红=有利变化，绿=不利/风险）</th><th>参考数值</th><th>相对上一天</th></tr></thead>
           <tbody id="stateRows"></tbody>
         </table>
       </div>
@@ -403,19 +428,17 @@ function renderBlockInfo(status) {
     return;
   }
   const skipText = status.can_skip
-    ? `本段已完成 ${status.manual_days_in_block} 天，可以跳到第 ${status.next_block_start} 天继续决策`
-    : (status.next_block_start
-        ? `还需要完成 ${status.remaining_before_skip} 天人工决策后，才能跳到第 ${status.next_block_start} 天`
-        : "当前已经没有预设的下一段");
+    ? `本段已完成 ${status.manual_days_in_block} 天，可以让系统自动运行到状态明显变化的一天`
+    : `还需要完成 ${status.remaining_before_skip} 天人工决策后，才能使用自动跳转`;
   $("blockInfo").innerHTML = `
     <div><strong>当前进度：</strong>第 ${status.day} 天，${status.block_title}。本段已完成 ${status.manual_days_in_block}/${status.min_human_days} 天人工决策。</div>
     <div class="muted"><strong>跳转提示：</strong>${skipText}。</div>
-    <div class="muted"><strong>下一段为什么需要决策：</strong>${status.next_block_reason}</div>
+    <div class="muted"><strong>什么时候重新决策：</strong>${status.next_block_reason}</div>
   `;
   $("skipBtn").disabled = !status.can_skip;
   $("skipBtn").textContent = status.can_skip
-    ? `跳到第 ${status.next_block_start} 天`
-    : (status.next_block_start ? `还差 ${status.remaining_before_skip} 天可跳过` : "没有下一段");
+    ? "跳到状态变化明显的一天"
+    : `还差 ${status.remaining_before_skip} 天可跳过`;
 }
 
 function renderActions(defaults, hints, limits, disabled=false) {
@@ -435,7 +458,9 @@ function renderActions(defaults, hints, limits, disabled=false) {
         <button type="button" onclick="adjust(${i},1.1)" ${disabled ? "disabled" : ""}>增加10%</button>
         <button type="button" onclick="add(${i},-1)" ${disabled ? "disabled" : ""}>-1</button>
         <button type="button" onclick="add(${i},1)" ${disabled ? "disabled" : ""}>+1</button>
-        <button type="button" onclick="setZero(${i})" ${disabled ? "disabled" : ""}>设为0</button>
+        <button type="button" onclick="setPreset(${i}, ${Number(limit.min || 0)})" ${disabled ? "disabled" : ""}>最小值</button>
+        <button type="button" onclick="setPreset(${i}, ${Number(defaults[i] || 0)})" ${disabled ? "disabled" : ""}>默认值</button>
+        <button type="button" onclick="setPreset(${i}, ${Number(limit.max || 0)})" ${disabled ? "disabled" : ""}>最大值</button>
       </div>`;
     box.appendChild(card);
   });
@@ -467,7 +492,7 @@ function bounded(i, value) {
 function clampInput(i) { const el = $("action" + i); el.value = formatInputValue(bounded(i, Number(el.value || 0))); }
 function adjust(i, factor) { const el = $("action" + i); el.value = formatInputValue(bounded(i, Number(el.value || 0) * factor)); }
 function add(i, delta) { const el = $("action" + i); el.value = formatInputValue(bounded(i, Number(el.value || 0) + delta)); }
-function setZero(i) { const el = $("action" + i); el.value = formatInputValue(bounded(i, 0)); }
+function setPreset(i, value) { const el = $("action" + i); el.value = formatInputValue(bounded(i, value)); }
 
 async function start() {
   const data = await api("/api/start", {participant_id: $("participant").value, password: $("accessPassword").value});
@@ -671,9 +696,9 @@ def api_start(payload):
         "auto_policy": auto_policy,
         "output_path": output_path,
         "meta_output_path": meta_output_path,
-        "block_index": 0,
-        "block_start_day": DECISION_BLOCKS[0]["start"],
+        "block_start_day": collector.env.day,
         "human_days_in_block": 0,
+        "last_skip_reason": None,
     }
     with SESSIONS_LOCK:
         SESSIONS[session_id] = session
@@ -723,33 +748,38 @@ def api_skip_to_next_block(payload):
         collector = session["collector"]
         status = block_status(session)
         if not status["can_skip"]:
-            if status["next_block_start"] is None:
-                raise ValueError("当前已经没有预设的下一段，可以继续人工决策或结束采集。")
             raise ValueError(f"本段还需要完成 {status['remaining_before_skip']} 天人工决策后才能跳过。")
 
-        target_index, target_block = next_block_after(collector.env.day)
-        target_day = int(target_block["start"])
+        anchor_state = collector.current_state().copy()
         auto_days = 0
         last_auto = None
         done = False
+        trigger_reasons = []
 
-        while collector.env.day < target_day:
+        while auto_days < DYNAMIC_SKIP_MAX_DAYS:
             last_auto = collector.auto_step()
             auto_days += 1
             done = bool(last_auto["done"])
             if done:
                 break
+            trigger_reasons = metric_change_reasons(anchor_state, collector.current_state())
+            if trigger_reasons:
+                break
 
         if not done:
-            session["block_index"] = target_index
-            session["block_start_day"] = target_day
+            session["block_start_day"] = collector.env.day
             session["human_days_in_block"] = 0
             session["decision_started_at"] = time.perf_counter()
+            if trigger_reasons:
+                session["last_skip_reason"] = "、".join(trigger_reasons[:3]) + "，因此需要重新人工判断。"
+            else:
+                session["last_skip_reason"] = f"系统已自动运行 {auto_days} 天；即使没有单项剧烈变化，也需要定期重新确认经营决策。"
 
         previous_state = last_auto["state"] if last_auto is not None else None
         result = {
             "done": done,
             "auto_days": auto_days,
+            "trigger_reasons": trigger_reasons,
             "rows_saved": collector.rows_saved,
             "stats": session_stats(session),
             "block": block_status(session),
@@ -768,9 +798,9 @@ def api_next_episode(payload):
         collector = session["collector"]
         collector.start_episode()
         session["decision_started_at"] = time.perf_counter()
-        session["block_index"] = 0
-        session["block_start_day"] = DECISION_BLOCKS[0]["start"]
+        session["block_start_day"] = collector.env.day
         session["human_days_in_block"] = 0
+        session["last_skip_reason"] = None
         return {"state": serialize_state(collector), "block": block_status(session)}
 
 
