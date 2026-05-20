@@ -348,7 +348,9 @@ class TD3(object):
                     # fake_s_n 和 fake_a_n 在上面的判别器更新块里已经标准化过了
                     disc_logits = self.gail_disc(fake_s_n, fake_a_n)
                     # 采用 Sigmoid 将分数平滑限制在 0~1 之间，绝对不会造成 Q 值爆炸
-                    dynamic_r_int = torch.sigmoid(disc_logits)
+                    disc_prob = torch.sigmoid(disc_logits).clamp(1e-4, 1 - 1e-4)
+                    raw_r_int = -torch.log1p(-disc_prob)
+                    dynamic_r_int = torch.tanh((raw_r_int - math.log(2.0)) / 2.0)
 
                     # 此时的融合权重 w_gail。建议从 1.0 或 2.0 开始试。
                     gail_scale = min(1.0, train_age / self.gail_warmup_steps)

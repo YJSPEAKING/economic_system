@@ -73,7 +73,7 @@ enterprise_ddpg_config = Config(
     learn_start_steps=1024,
     gail_reward_weight=2.0,
     gail_warmup_steps=5000,
-    disc_update_ratio=1,
+    disc_update_ratio=2,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -127,7 +127,14 @@ bank_config = Bank_config(
     fund=2000,
     fund_rate=1,
     fund_increase=0.1,
-    debt_time=5
+    debt_time=5,
+    reward_profit_weight=1.0,
+    reward_credit_weight=0.3,
+    reward_survival_weight=0.05,
+    reward_unmet_credit_weight=0.1,
+    reward_default_weight=1.0,
+    reward_smooth_weight=0.1,
+    reward_value_scale=100.0
 )
 
 enterprise_config = Enterprise_config(
