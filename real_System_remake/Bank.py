@@ -1,5 +1,6 @@
 from .Enterprise import Enterprise
 from .Bank_config import Bank_config
+import math
 import random
 # 银行参数设置在外面，一般来说是不用改的
 M = 0  # 现金（等价于利润）
@@ -39,6 +40,14 @@ class Bank:
         self.fund_rate = config.fund_rate           # 储备金率，银行总共可以放出的贷款额度为 sum(bond) <= fund_rate * (fund + money)
         self.fund_increase = config.fund_increase   # 储备金每回合增长，即 fund = fund * (1 + fund_increase) ^ day
         self.action_function = config.action_function
+        self.reward_profit_weight = getattr(config, 'reward_profit_weight', 1.0)
+        self.reward_credit_weight = getattr(config, 'reward_credit_weight', 0.3)
+        self.reward_survival_weight = getattr(config, 'reward_survival_weight', 0.05)
+        self.reward_unmet_credit_weight = getattr(config, 'reward_unmet_credit_weight', 0.1)
+        self.reward_default_weight = getattr(config, 'reward_default_weight', 1.0)
+        self.reward_smooth_weight = getattr(config, 'reward_smooth_weight', 0.1)
+        self.reward_value_scale = getattr(config, 'reward_value_scale', 100.0)
+        self.last_total_real_WNDB = 0.0
         self.total_reward = {'WNDB': 0, }           # 如果要更改奖励就在这里改
         self.reward_decay = 0.95
         self.step = 0
@@ -67,6 +76,7 @@ class Bank:
         self.reward = {}
         self.total_reward = {'WNDB': 0}
         self.step = 0
+        self.last_total_real_WNDB = 0.0
 
         self.WNDB = {}  # 该回合银行决策对企业的放贷
         self.real_WNDB = {}  # 该回合银行实际执行对企业的放贷
@@ -152,12 +162,27 @@ class Bank:
     def get_state(self):
         return self.state
 
+    def _scale_reward_value(self, value):
+        return math.tanh(value / (self.reward_value_scale + 1e-6))
+
 
     def custom_reward(self):
-        '''
-        self.reward['WNDB'] = self.profit/1
-        '''
-        self.reward['WNDB'] = self.profit/100
+        total_wndb = sum(max(value, 0) for value in self.WNDB.values())
+        total_real_wndb = sum(max(value, 0) for value in self.real_WNDB.values())
+        credit_fill_rate = total_real_wndb / (total_wndb + 1e-6) if total_wndb > 1e-6 else 0
+        unmet_rate = max(0, 1 - credit_fill_rate) if total_wndb > 1e-6 else 0
+        credit_volatility = abs(total_real_wndb - self.last_total_real_WNDB)
+
+        interest_reward = self.reward_profit_weight * self._scale_reward_value(self.profit)
+        credit_support = self.reward_credit_weight * credit_fill_rate
+        unmet_penalty = self.reward_unmet_credit_weight * unmet_rate
+        smooth_penalty = self.reward_smooth_weight * self._scale_reward_value(credit_volatility)
+        alive_count = sum(0 if target.is_falled() else 1 for target in self.observation.values())
+        survival_reward = self.reward_survival_weight * alive_count
+        default_exposure = sum(self.bond[key] for key, target in self.observation.items() if target.is_falled())
+        default_penalty = self.reward_default_weight * self._scale_reward_value(default_exposure)
+        self.reward['WNDB'] = interest_reward + credit_support + survival_reward - unmet_penalty - smooth_penalty - default_penalty
+        self.last_total_real_WNDB = total_real_wndb
 
 
     def get_reward(self):
@@ -170,10 +195,8 @@ class Bank:
     def get_fail_reward(self):
         fail_reward = {'WNDB':0}
         decay = self.reward_decay ** self.step
-        # for key in self.observation:
-        #     if self.observation[key].is_falled():
-        #         fail_reward['WNDB'] -= self.bond[key]
-        fail_reward['WNDB'] = -10
+        default_exposure = sum(self.bond[key] for key, target in self.observation.items() if target.is_falled())
+        fail_reward['WNDB'] = -10 - self.reward_default_weight * self._scale_reward_value(default_exposure)
         self.total_reward['WNDB'] += fail_reward['WNDB'] * decay
         return fail_reward
 
