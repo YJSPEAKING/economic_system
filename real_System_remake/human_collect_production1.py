@@ -20,8 +20,18 @@ from real_System_remake.Environment import Environment
 TARGET_AGENT = "production1"
 DEFAULT_SEED = 184
 DEFAULT_AUTO_POLICY = "td3"
+BACKGROUND_ACTOR_SEED = 184
+BACKGROUND_ACTOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frozen_actors")
+BACKGROUND_ACTOR_PATH = os.environ.get(
+    "HUMAN_COLLECT_BACKGROUND_ACTOR_PATH",
+    os.path.join(
+        BACKGROUND_ACTOR_DIR,
+        f"seed_{BACKGROUND_ACTOR_SEED}",
+        f"seed_{BACKGROUND_ACTOR_SEED}_background_actors.pth",
+    ),
+)
 ACTION_NAMES = ["WNDF", "K", "L", "price"]
-ACTION_DISPLAY_NAMES = ["申请贷款金额", "原料K采购需求", "原料L采购需求", "产品K销售价格"]
+ACTION_DISPLAY_NAMES = ["申请贷款金额", "原料A采购需求", "原料B采购需求", "产品A销售价格"]
 ENTERPRISE_ADD_LIST = {
     "production1": "K",
     "consumption1": "L",
@@ -53,28 +63,28 @@ STATE_FIELDS = [
     ("上一天实际获得贷款", 1000),
     ("今天待还本金", 1000),
     ("今天待还利息", 10),
-    ("上一天K采购需求", 10),
-    ("上一天L采购需求", 10),
-    ("上一天生产企业向生产企业购买价格", 10),
-    ("上一天生产企业向生产企业购买数量", 10),
-    ("上一天生产企业向消费企业购买价格", 10),
-    ("上一天生产企业向消费企业购买数量", 10),
-    ("上一天生产企业向生产第三方市场购买价格", 10),
-    ("上一天生产企业向生产第三方市场购买数量", 10),
-    ("上一天生产企业向消费第三方市场购买价格", 10),
-    ("上一天生产企业向消费第三方市场购买数量", 10),
-    ("上一天消费企业向生产企业购买价格", 10),
-    ("上一天消费企业向生产企业购买数量", 10),
-    ("上一天消费企业向消费企业购买价格", 10),
-    ("上一天消费企业向消费企业购买数量", 10),
-    ("上一天消费企业向生产第三方市场购买价格", 10),
-    ("上一天消费企业向生产第三方市场购买数量", 10),
-    ("上一天消费企业向消费第三方市场购买价格", 10),
-    ("上一天消费企业向消费第三方市场购买数量", 10),
-    ("今天K商品报价：生产企业", 10),
-    ("今天K商品报价：生产第三方市场", 10),
-    ("今天L商品报价：消费企业", 10),
-    ("今天L商品报价：消费第三方市场", 10),
+    ("上一天A采购需求", 10),
+    ("上一天B采购需求", 10),
+    ("上一天甲公司向甲公司购买价格", 10),
+    ("上一天甲公司向甲公司购买数量", 10),
+    ("上一天甲公司向乙公司购买价格", 10),
+    ("上一天甲公司向乙公司购买数量", 10),
+    ("上一天甲公司向第三方市场购买A价格", 10),
+    ("上一天甲公司向第三方市场购买A数量", 10),
+    ("上一天甲公司向第三方市场购买B价格", 10),
+    ("上一天甲公司向第三方市场购买B数量", 10),
+    ("上一天乙公司向甲公司购买价格", 10),
+    ("上一天乙公司向甲公司购买数量", 10),
+    ("上一天乙公司向乙公司购买价格", 10),
+    ("上一天乙公司向乙公司购买数量", 10),
+    ("上一天乙公司向第三方市场购买A价格", 10),
+    ("上一天乙公司向第三方市场购买A数量", 10),
+    ("上一天乙公司向第三方市场购买B价格", 10),
+    ("上一天乙公司向第三方市场购买B数量", 10),
+    ("今天产品A报价：甲公司", 10),
+    ("今天产品A报价：第三方市场", 10),
+    ("今天产品B报价：乙公司", 10),
+    ("今天产品B报价：第三方市场", 10),
 ]
 
 
@@ -197,15 +207,15 @@ def purchase_summary(local_pair, third_pair):
     total_spend = local_price * local_num + third_price * third_num
     return (
         f"普通市场：买到 {format_number(local_num)}，单价 {format_number(local_price)}\n"
-        f"第三方补充市场：买到 {format_number(third_num)}，单价 {format_number(third_price)}\n"
+        f"第三方市场：买到 {format_number(third_num)}，定价 {format_number(third_price)}\n"
         f"合计 {format_number(total_num)}，花费 {format_number(total_spend)}"
     )
 
 
 def market_price_summary(local_price, third_price):
-    cheaper = "普通市场" if local_price <= third_price else "第三方补充市场"
+    cheaper = "普通市场" if local_price <= third_price else "第三方市场"
     return (
-        f"普通市场单价 {format_number(local_price)}；第三方补充市场固定单价 {format_number(third_price)}。\n"
+        f"普通市场单价 {format_number(local_price)}；第三方市场固定定价 {format_number(third_price)}。\n"
         f"系统会先买更便宜的{cheaper}，买不够再买下一档。"
     )
 
@@ -242,17 +252,17 @@ def display_rows(state, day=None):
         ("总体", "今天需要还款（本金+利息）", debt_due, "debt_due"),
         ("总体", "目前总欠款", raw_state_value(state, 2), "debt"),
         ("总体", f"{previous_text}经营差额：收入 {format_number(previous_revenue)} - 原料采购支出 {format_number(previous_purchase_spend)}", previous_net, "previous_net"),
-        ("原料K", "原料K作用：和原料L配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)\n原料当天购买、当天投入生产，不跨天保存。", "production_rule"),
-        ("原料K", "当前原料K参考采购量（你可在下方修改）", k_need, "k_need"),
-        ("原料K", "今天原料K可购买价格", market_price_summary(k_local_price, k_third_price), "k_market_detail"),
-        ("原料K", f"{previous_text}原料K成交结果", purchase_summary(k_local_pair, k_third_pair), "previous_k_trade"),
-        ("原料L", "原料L作用：和原料K配套投入生产，少的一种会卡住产品K产量", "产品K产量 = 2.5 × min(买到的原料K, 买到的原料L)\n原料当天购买、当天投入生产，不跨天保存。", "production_rule"),
-        ("原料L", "当前原料L参考采购量（你可在下方修改）", l_need, "l_need"),
-        ("原料L", "今天原料L可购买价格", market_price_summary(l_local_price, l_third_price), "l_market_detail"),
-        ("原料L", f"{previous_text}原料L成交结果", purchase_summary(l_local_pair, l_third_pair), "previous_l_trade"),
-        ("产品K", "当前可出售的产品K库存", product_stock, "product_stock"),
-        ("产品K", "今天产品K销售价格", price, "price"),
-        ("产品K", f"{previous_text}产品K表现：售出数量（产出数量 {format_number(previous_output)}）", previous_sales, "sales"),
+        ("原料A", "原料A作用：和原料B配套投入生产，少的一种会卡住产品A产量", "产品A产量 = 2.5 × min(买到的原料A, 买到的原料B)\n原料当天购买、当天投入生产，不跨天保存。", "production_rule"),
+        ("原料A", "当前原料A参考采购量（你可在下方修改）", k_need, "k_need"),
+        ("原料A", "今天原料A可购买价格", market_price_summary(k_local_price, k_third_price), "k_market_detail"),
+        ("原料A", f"{previous_text}原料A成交结果", purchase_summary(k_local_pair, k_third_pair), "previous_k_trade"),
+        ("原料B", "原料B作用：和原料A配套投入生产，少的一种会卡住产品A产量", "产品A产量 = 2.5 × min(买到的原料A, 买到的原料B)\n原料当天购买、当天投入生产，不跨天保存。", "production_rule"),
+        ("原料B", "当前原料B参考采购量（你可在下方修改）", l_need, "l_need"),
+        ("原料B", "今天原料B可购买价格", market_price_summary(l_local_price, l_third_price), "l_market_detail"),
+        ("原料B", f"{previous_text}原料B成交结果", purchase_summary(l_local_pair, l_third_pair), "previous_l_trade"),
+        ("产品A", "当前可出售的产品A库存", product_stock, "product_stock"),
+        ("产品A", "今天产品A销售价格", price, "price"),
+        ("产品A", f"{previous_text}产品A表现：售出数量（产出数量 {format_number(previous_output)}）", previous_sales, "sales"),
     ]
 
 
@@ -320,6 +330,10 @@ class HumanProductionCollector:
         self.auto_agents = {}
         self.rows_saved = 0
         self.history = []
+        self.state_history = []
+        self.background_actor_path = BACKGROUND_ACTOR_PATH
+        self.background_actor_metadata = None
+        self.background_actor_loaded = set()
         seed_everything(self.seed)
         self._build_env()
 
@@ -341,8 +355,19 @@ class HumanProductionCollector:
         self.state = self.env.reset()
         self.new_ep = True
         self.auto_agents = {}
+        self.background_actor_loaded = set()
         self.history = []
+        self.state_history = [self._state_snapshot()]
         return self.current_state()
+
+    def _state_snapshot(self):
+        return {
+            "day": int(self.env.day),
+            "full_state": {
+                key: np.array(value, dtype=float).copy()
+                for key, value in self.state.items()
+            },
+        }
 
     def current_state(self):
         return np.array(self.state[TARGET_AGENT], dtype=float)
@@ -362,8 +387,35 @@ class HumanProductionCollector:
 
             config = make_ddpg_config(key, 2, 0.5, len(self.state[key]), self.seed)
             agent = bank_nnu(config)
+        self._load_frozen_background_actor(key, agent)
         self.auto_agents[key] = agent
         return agent
+
+    def _load_frozen_background_actor(self, key, agent):
+        if key not in {"consumption1", "bank1"}:
+            return
+        if not os.path.exists(self.background_actor_path):
+            raise FileNotFoundError(
+                "找不到成熟乙公司/银行权重文件："
+                f"{self.background_actor_path}。请确认 frozen_actors 已复制到 real_System_remake 下。"
+            )
+
+        from real_System_remake.frozen_actor_utils import load_background_actors
+
+        if key == "consumption1":
+            checkpoint = load_background_actors(
+                self.background_actor_path,
+                consumption_agent=agent,
+                freeze=True,
+            )
+        else:
+            checkpoint = load_background_actors(
+                self.background_actor_path,
+                bank_agent=agent,
+                freeze=True,
+            )
+        self.background_actor_metadata = checkpoint.get("metadata", {})
+        self.background_actor_loaded.add(key)
 
     def _build_action(self, target_action):
         action = {TARGET_AGENT: np.array(target_action, dtype=float)}
@@ -391,16 +443,21 @@ class HumanProductionCollector:
     def step(self, model_action, human_values, decision_seconds):
         model_action = np.array(model_action, dtype=float)
         if model_action.shape[0] != len(ACTION_NAMES):
-            raise ValueError("生产企业动作必须是4个数。")
+            raise ValueError("甲公司动作必须是4个数。")
 
         action = self._build_action(model_action)
         state_before_action = self.current_state().copy()
+        full_state_before_action = {
+            key: np.array(value, dtype=float).copy()
+            for key, value in self.state.items()
+        }
         day_before_action = self.env.day
 
         self.history.append(
             {
                 "day": day_before_action,
                 "state": state_before_action,
+                "full_state": full_state_before_action,
                 "action": model_action.copy(),
                 "human_values": list(human_values),
             }
@@ -410,10 +467,15 @@ class HumanProductionCollector:
         next_state, reward, done = self.env.observe()
         self.state = next_state
         self.new_ep = False
+        self.state_history.append(self._state_snapshot())
         return done, reward
 
     def auto_step(self):
         state_before_action = self.current_state().copy()
+        full_state_before_action = {
+            key: np.array(value, dtype=float).copy()
+            for key, value in self.state.items()
+        }
         day_before_action = self.env.day
         target_action = self._auto_target_action()
         action = self._build_action(target_action)
@@ -421,11 +483,13 @@ class HumanProductionCollector:
         next_state, reward, done = self.env.observe()
         self.state = next_state
         self.new_ep = False
+        self.state_history.append(self._state_snapshot())
         return {
             "done": done,
             "reward": reward,
             "day": day_before_action,
             "state": state_before_action,
+            "full_state": full_state_before_action,
             "action": np.array(target_action, dtype=float),
         }
 
@@ -470,7 +534,7 @@ class HumanProductionCollector:
 class CollectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("生产企业人类专家数据采集")
+        self.title("甲公司人类专家数据采集")
         self.geometry("1220x860")
         self.collector = None
         self.participant_var = tk.StringVar(value="anonymous")
@@ -509,7 +573,7 @@ class CollectorApp(tk.Tk):
 
         self.compact_help = ttk.Label(
             self,
-            text="任务目标：根据生产企业今天可见的信息，填写贷款、采购和价格，让企业尽量存活更久并保持经营稳定。",
+            text="任务目标：根据甲公司今天可见的信息，填写贷款、采购和价格，让企业尽量存活更久并保持经营稳定。",
             foreground="#555",
             wraplength=1160,
         )
@@ -524,9 +588,9 @@ class CollectorApp(tk.Tk):
         ttk.Label(
             self.intro_frame,
             text=(
-                "你将扮演“生产企业”的经营决策者。\n\n"
+                "你将扮演“甲公司”的经营决策者。\n\n"
                 "每天系统会展示企业现金、库存、债务、还款压力、采购需求和市场报价等关键信息。"
-                "请填写今天希望申请的贷款金额、K/L采购需求和销售价格。"
+                "请填写今天希望申请的贷款金额、A/B采购需求和销售价格。"
                 "系统会自动把你的直观输入转换成模型需要的动作格式，并记录为专家数据。\n\n"
                 "目标不是追求某一天的最大收益，而是尽量让企业活得更久、经营更稳定。"
             ),
@@ -561,9 +625,9 @@ class CollectorApp(tk.Tk):
         action_frame.pack(fill=tk.X, padx=10)
         descriptions = [
             "0=不申请贷款；最大值=当前现金",
-            "直接填写希望采购的原料K数量",
-            "直接填写希望采购的原料L数量",
-            "直接填写希望设置的产品K销售价格",
+            "直接填写希望采购的原料A数量",
+            "直接填写希望采购的原料B数量",
+            "直接填写希望设置的产品A销售价格",
         ]
         for idx, name in enumerate(ACTION_DISPLAY_NAMES):
             ttk.Label(action_frame, text=name).grid(row=0, column=idx, sticky=tk.W)
@@ -677,7 +741,7 @@ class CollectorApp(tk.Tk):
             self._set_status(
                 f"本回合结束，存活 {self.collector.env.day} 天；已保存 {self.collector.rows_saved} 条专家数据。"
             )
-            messagebox.showinfo("回合结束", f"生产企业本回合存活 {self.collector.env.day} 天。")
+            messagebox.showinfo("回合结束", f"甲公司本回合存活 {self.collector.env.day} 天。")
         else:
             self.current_decision_started_at = time.perf_counter()
             self.prev_day_btn.config(state=tk.NORMAL)
@@ -725,7 +789,7 @@ class CollectorApp(tk.Tk):
             change = self._change_text(key, value, previous_state)
             self.state_table.insert("", tk.END, values=(group, name, format_number(value), change), tags=tags)
         mode = "只读查看" if readonly else "当前决策"
-        self.state_table.heading("name", text=f"生产企业第 {day} 天可见的信息（{mode}）", anchor=tk.CENTER)
+        self.state_table.heading("name", text=f"甲公司第 {day} 天可见的信息（{mode}）", anchor=tk.CENTER)
 
     def _change_text(self, key, value, previous_state):
         if previous_state is None:
@@ -781,8 +845,8 @@ class CollectorApp(tk.Tk):
                 raise ValueError(f"贷款意愿不能超过当前现金 {format_number(cash)}。")
             loan_action = loan / cash - 0.5
 
-        k_action = self._quantity_to_action(k_need, k_base, "K采购需求")
-        l_action = self._quantity_to_action(l_need, l_base, "L采购需求")
+        k_action = self._quantity_to_action(k_need, k_base, "A采购需求")
+        l_action = self._quantity_to_action(l_need, l_base, "B采购需求")
         if price_base <= 0:
             raise ValueError("当前价格基准异常，不能提交价格动作。")
         price_action = price / price_base - 1
@@ -817,9 +881,9 @@ class CollectorApp(tk.Tk):
         price_base = raw_state_value(state, 6)
         hints = [
             f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-            f"原料K要和原料L配套；上一回合K参考量 {format_number(k_base)}、L参考量 {format_number(l_base)}。K明显多于L时，多出的K可能无法变成产品。",
-            f"原料L要和原料K配套；上一回合L参考量 {format_number(l_base)}、K参考量 {format_number(k_base)}。L明显多于K时，多出的L可能无法变成产品。",
-            f"这是产品K的出售价格；参考当前价格 {format_number(price_base)} 和可出售库存，价格过高可能更难卖出。",
+            f"原料A要和原料B配套；上一回合A参考量 {format_number(k_base)}、B参考量 {format_number(l_base)}。A明显多于B时，多出的A可能无法变成产品。",
+            f"原料B要和原料A配套；上一回合B参考量 {format_number(l_base)}、A参考量 {format_number(k_base)}。B明显多于A时，多出的B可能无法变成产品。",
+            "产品A定价应兼顾成本收益、乙公司承受能力和双方合作稳定性。",
         ]
         for idx, text in enumerate(hints):
             self.action_hint_vars[idx].set(text)

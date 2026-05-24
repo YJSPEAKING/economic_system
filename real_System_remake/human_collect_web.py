@@ -38,12 +38,12 @@ DYNAMIC_REL_CHANGE = 0.25
 DYNAMIC_PRICE_REL_CHANGE = 0.15
 DYNAMIC_ABS_CHANGE = {
     "现金": 50.0,
-    "产品库存": 10.0,
+    "产品A库存": 10.0,
     "总欠款": 50.0,
     "今日还款": 20.0,
-    "原料K参考采购量": 2.0,
-    "原料L参考采购量": 2.0,
-    "产品K销售价格": 1.0,
+    "原料A参考采购量": 2.0,
+    "原料B参考采购量": 2.0,
+    "产品A销售价格": 1.0,
 }
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
@@ -82,9 +82,9 @@ def action_hints(state):
     price_base = raw_state_value(state, 6)
     return [
         f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-        f"原料K要和原料L配套；上一回合K参考量 {format_number(k_base)}、L参考量 {format_number(l_base)}。K明显多于L时，多出的K可能无法变成产品。",
-        f"原料L要和原料K配套；上一回合L参考量 {format_number(l_base)}、K参考量 {format_number(k_base)}。L明显多于K时，多出的L可能无法变成产品。",
-        f"这是产品K的出售价格；参考当前价格 {format_number(price_base)} 和可出售库存，价格过高可能更难卖出。",
+        f"原料A要和原料B配套；上一回合A参考量 {format_number(k_base)}、B参考量 {format_number(l_base)}。A明显多于B时，多出的A可能无法变成产品。",
+        f"原料B要和原料A配套；上一回合B参考量 {format_number(l_base)}、A参考量 {format_number(k_base)}。B明显多于A时，多出的B可能无法变成产品。",
+        "产品A定价应兼顾成本收益、乙公司承受能力和双方合作稳定性。",
     ]
 
 
@@ -148,8 +148,8 @@ def human_to_model_action(state, values):
             raise ValueError(f"申请贷款金额不能超过当前现金 {format_number(cash)}。")
         loan_action = loan / cash - 0.5
 
-    k_action = quantity_to_action(k_need, k_base, "K采购需求")
-    l_action = quantity_to_action(l_need, l_base, "L采购需求")
+    k_action = quantity_to_action(k_need, k_base, "A采购需求")
+    l_action = quantity_to_action(l_need, l_base, "B采购需求")
     if price_base <= 0:
         raise ValueError("当前价格基准异常，不能提交价格动作。")
     price_action = price / price_base - 1
@@ -158,16 +158,234 @@ def human_to_model_action(state, values):
     return [loan_action, k_action, l_action, price_action]
 
 
-def serialize_state(collector, state=None, day=None, readonly=False, previous_state_override=None):
+def raw_or_zero(state, index):
+    try:
+        return raw_state_value(state, index)
+    except Exception:
+        return 0.0
+
+
+def agent_raw_value(full_state, agent_key, index):
+    if not full_state or agent_key not in full_state:
+        return None
+    return raw_or_zero(full_state[agent_key], index)
+
+
+def signed_number(value):
+    if value is None:
+        return "-"
+    sign = "+" if value > 0 else ""
+    return f"{sign}{format_number(value)}"
+
+
+def production_metrics(state):
+    k_local_pair = (raw_or_zero(state, 13), raw_or_zero(state, 14))
+    l_local_pair = (raw_or_zero(state, 15), raw_or_zero(state, 16))
+    k_third_pair = (raw_or_zero(state, 17), raw_or_zero(state, 18))
+    l_third_pair = (raw_or_zero(state, 19), raw_or_zero(state, 20))
+    k_pairs = [k_local_pair, k_third_pair]
+    l_pairs = [l_local_pair, l_third_pair]
+    purchase_spend = sum(price * num for price, num in k_pairs + l_pairs)
+    revenue = raw_or_zero(state, 3) * raw_or_zero(state, 5)
+    return {
+        "k_local_pair": k_local_pair,
+        "l_local_pair": l_local_pair,
+        "k_third_pair": k_third_pair,
+        "l_third_pair": l_third_pair,
+        "k_total": k_local_pair[1] + k_third_pair[1],
+        "l_total": l_local_pair[1] + l_third_pair[1],
+        "purchase_spend": purchase_spend,
+        "revenue": revenue,
+        "net": revenue - purchase_spend,
+    }
+
+
+def consumption_purchase_metrics(state):
+    k_local_pair = (raw_or_zero(state, 21), raw_or_zero(state, 22))
+    l_local_pair = (raw_or_zero(state, 23), raw_or_zero(state, 24))
+    k_third_pair = (raw_or_zero(state, 25), raw_or_zero(state, 26))
+    l_third_pair = (raw_or_zero(state, 27), raw_or_zero(state, 28))
+    return {
+        "k_total": k_local_pair[1] + k_third_pair[1],
+        "l_total": l_local_pair[1] + l_third_pair[1],
+        "k_local_pair": k_local_pair,
+        "l_local_pair": l_local_pair,
+        "k_third_pair": k_third_pair,
+        "l_third_pair": l_third_pair,
+    }
+
+
+def profit_line_charts(collector):
+    snapshots = getattr(collector, "state_history", [])
+    if not snapshots:
+        return []
+
+    def cash_of(snapshot, agent_key):
+        full_state = snapshot.get("full_state", {})
+        return agent_raw_value(full_state, agent_key, 0)
+
+    charts = []
+    for agent_key, title in (("production1", "甲公司每日净利润"), ("consumption1", "乙公司每日净利润")):
+        points = []
+        previous_cash = None
+        for snapshot in snapshots:
+            cash = cash_of(snapshot, agent_key)
+            if cash is None:
+                continue
+            if previous_cash is None:
+                previous_cash = cash
+                continue
+            profit = cash - previous_cash
+            points.append({"day": len(points) + 1, "value": round(profit, 4)})
+            previous_cash = cash
+        charts.append({"title": title, "points": points})
+    return charts
+
+
+def purchase_breakdown_text(title, local_pair, third_pair):
+    local_price, local_num = local_pair
+    third_price, third_num = third_pair
+    total_num = local_num + third_num
+    total_spend = local_price * local_num + third_price * third_num
+    return (
+        f"{title}: 普通市场买到 {format_number(local_num)}，单价 {format_number(local_price)}；"
+        f"第三方市场买到 {format_number(third_num)}，定价 {format_number(third_price)}；"
+        f"合计 {format_number(total_num)}，花费 {format_number(total_spend)}。"
+    )
+
+
+def dashboard_payload(collector, state, day, previous_state=None, full_state=None, previous_full_state=None):
+    prod = production_metrics(state)
+    cons = consumption_purchase_metrics(state)
+    cash = raw_or_zero(state, 0)
+    previous_cash = raw_or_zero(previous_state, 0) if previous_state is not None else None
+    cash_delta = cash - previous_cash if previous_cash is not None else None
+    actual_loan = raw_or_zero(state, 8)
+    consumption_cash = agent_raw_value(full_state, "consumption1", 0)
+    previous_consumption_cash = agent_raw_value(previous_full_state, "consumption1", 0)
+    consumption_cash_delta = (
+        consumption_cash - previous_consumption_cash
+        if consumption_cash is not None and previous_consumption_cash is not None
+        else None
+    )
+
+    if previous_state is None:
+        summary_lines = [
+            "第一天刚开始，还没有上一天净利润记录。",
+            f"甲公司现在有 {format_number(cash)} 现金。你今天先决定借多少钱、买多少原料A和B、产品A卖多少钱。"
+        ]
+    else:
+        summary_lines = [
+            f"昨天甲公司净利润是 {signed_number(cash_delta)}，现在现金是 {format_number(cash)}。",
+            (
+                f"乙公司昨天净利润是 {signed_number(consumption_cash_delta)}。它如果持续变差，后面购买产品A的能力也可能受影响。"
+                if consumption_cash_delta is not None
+                else "乙公司昨天净利润暂时看不到；等进入下一天后再观察它有没有变好或变差。"
+            ),
+        ]
+
+    modules = [
+        {
+            "title": "贷款信息",
+            "unit": "金额",
+            "items": [
+                {"label": "当前现金", "value": format_number(cash), "raw": cash},
+                {"label": "今天还款", "value": format_number(raw_or_zero(state, 9) + raw_or_zero(state, 10)), "raw": raw_or_zero(state, 9) + raw_or_zero(state, 10)},
+                {"label": "总欠款", "value": format_number(raw_or_zero(state, 2)), "raw": raw_or_zero(state, 2)},
+                {"label": "昨天贷款", "value": format_number(actual_loan), "raw": actual_loan},
+            ],
+        },
+        {
+            "title": "上一天两家公司买到的原料数量",
+            "items": [
+                {"label": "甲公司-A", "value": format_number(prod["k_total"]), "raw": prod["k_total"]},
+                {"label": "甲公司-B", "value": format_number(prod["l_total"]), "raw": prod["l_total"]},
+                {"label": "乙公司-A", "value": format_number(cons["k_total"]), "raw": cons["k_total"]},
+                {"label": "乙公司-B", "value": format_number(cons["l_total"]), "raw": cons["l_total"]},
+            ],
+        },
+        {
+            "title": "定价与销售信息",
+            "items": [
+                {"label": "A普通市场定价", "value": format_number(raw_or_zero(state, 29)), "raw": raw_or_zero(state, 29)},
+                {"label": "A第三方市场定价", "value": format_number(raw_or_zero(state, 30)), "raw": raw_or_zero(state, 30)},
+                {"label": "B普通市场定价", "value": format_number(raw_or_zero(state, 31)), "raw": raw_or_zero(state, 31)},
+                {"label": "B第三方市场定价", "value": format_number(raw_or_zero(state, 32)), "raw": raw_or_zero(state, 32)},
+                {"label": "产品A昨天售出", "value": format_number(raw_or_zero(state, 3)), "raw": raw_or_zero(state, 3)},
+                {"label": "产品A昨天产出", "value": format_number(raw_or_zero(state, 4)), "raw": raw_or_zero(state, 4)},
+                {"label": "产品A当前库存", "value": format_number(raw_or_zero(state, 1)), "raw": raw_or_zero(state, 1)},
+            ],
+        },
+    ]
+
+    charts = []
+
+    details = [
+        {
+            "title": "原料、生产和销售规则",
+            "lines": [
+                "原料A和原料B需要配套投入生产，少的一种会限制产品A产量。",
+                "产品A产量 = 2.5 × min(买到的原料A, 买到的原料B)。",
+                "原料当天购买、当天投入生产，不跨天保存。",
+                "产品A进入市场后，价格越高不一定越好，过高可能更难卖出。",
+            ],
+        },
+        {
+            "title": "市场购买规则",
+            "lines": [
+                "普通市场和第三方市场可能同时提供同类商品；这里的第三方市场可以理解为政府宏观调控部门。",
+                "第三方市场固定定价为100，数量充足，用来避免市场完全买不到货。",
+                "系统会先购买更便宜的一档；如果普通市场买不够，再从下一档补充。",
+                "当市场同类商品数量不足时，会按需求比例分配。"
+            ],
+        },
+        {
+            "title": "仿真环境六个阶段（系统自动完成）",
+            "lines": [
+                "P1 企业决策阶段：甲公司决定贷款意愿、原料A采购需求、原料B采购需求和产品A价格。",
+                "P2 银行决策阶段：银行根据甲公司、乙公司和市场状态决定可放贷额度。",
+                "P3 贷款发放阶段：银行实际向企业发放贷款；贷款本金默认5天后到期归还，贷款期间每天都会产生并支付利息。",
+                "P4 商品交易阶段：企业在市场中购买原料、出售产品。",
+                "P5 商品生产阶段：甲公司用买到的原料A和原料B生产下一天可销售的产品A。",
+                "P6 清算阶段：系统结算还款、利息、现金和破产状态，然后进入下一天。",
+            ],
+        },
+        {
+            "title": "上一天成交明细",
+            "lines": [
+                purchase_breakdown_text("甲公司购买原料A", prod["k_local_pair"], prod["k_third_pair"]),
+                purchase_breakdown_text("甲公司购买原料B", prod["l_local_pair"], prod["l_third_pair"]),
+                purchase_breakdown_text("乙公司购买原料A", cons["k_local_pair"], cons["k_third_pair"]),
+                purchase_breakdown_text("乙公司购买原料B", cons["l_local_pair"], cons["l_third_pair"]),
+            ],
+        },
+    ]
+
+    return {
+        "summary": {"title": f"第 {day} 天经营小结", "lines": summary_lines},
+        "modules": modules,
+        "lineCharts": profit_line_charts(collector),
+        "charts": charts,
+        "details": details,
+    }
+
+
+def serialize_state(collector, state=None, day=None, readonly=False,
+                    previous_state_override=None, full_state_override=None,
+                    previous_full_state_override=None):
     if state is None:
         state = collector.current_state()
     if day is None:
         day = collector.env.day
+    full_state = full_state_override if full_state_override is not None else collector.state
     previous_state = None
+    previous_full_state = None
     if previous_state_override is not None:
         previous_state = previous_state_override
+        previous_full_state = previous_full_state_override
     elif not readonly and collector.history:
         previous_state = collector.history[-1]["state"]
+        previous_full_state = collector.history[-1].get("full_state")
     rows = []
     for group, name, value, key in display_rows(state, day=day):
         tags = list(row_change_tag(key, value, previous_state) or risk_tag(key, value, state))
@@ -186,6 +404,14 @@ def serialize_state(collector, state=None, day=None, readonly=False, previous_st
         "defaults": [input_number(value) for value in default_human_values(state)],
         "hints": action_hints(state),
         "limits": action_limits(state),
+        "dashboard": dashboard_payload(
+            collector=collector,
+            state=state,
+            day=day,
+            previous_state=previous_state,
+            full_state=full_state,
+            previous_full_state=previous_full_state,
+        ),
     }
 
 
@@ -279,12 +505,12 @@ def write_episode_summary(session, status, survival_days=None):
 def decision_metrics(state):
     return {
         "现金": raw_state_value(state, 0),
-        "产品库存": raw_state_value(state, 1),
+        "产品A库存": raw_state_value(state, 1),
         "总欠款": raw_state_value(state, 2),
         "今日还款": raw_state_value(state, 9) + raw_state_value(state, 10),
-        "原料K参考采购量": raw_state_value(state, 11),
-        "原料L参考采购量": raw_state_value(state, 12),
-        "产品K销售价格": raw_state_value(state, 6),
+        "原料A参考采购量": raw_state_value(state, 11),
+        "原料B参考采购量": raw_state_value(state, 12),
+        "产品A销售价格": raw_state_value(state, 6),
     }
 
 
@@ -339,7 +565,7 @@ HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>生产企业人类专家数据采集</title>
+  <title>甲公司人类专家数据采集</title>
   <style>
     body { margin: 0; font-family: "Microsoft YaHei", Arial, sans-serif; background: #f6f7f9; color: #1f2933; }
     header { background: #18324a; color: white; padding: 18px 28px; }
@@ -375,35 +601,59 @@ HTML = r"""<!doctype html>
     .block-info { margin-top: 14px; padding: 12px 14px; background: #f3f8ff; border: 1px solid #cfe0f5; border-radius: 8px; line-height: 1.65; }
     .block-info strong { color: #18324a; }
     .block-info .muted { color: #596b7d; }
+    .summary-card { border-left: 4px solid #18324a; background: #f8fbff; padding: 14px 16px; border-radius: 6px; line-height: 1.75; }
+    .summary-card h3, .chart-card h3, .module-card h3 { margin: 0 0 10px; color: #18324a; font-size: 17px; }
+    .summary-card p { margin: 6px 0; }
+    .summary-card + .actions { margin-top: 14px; }
+    .line-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+    .line-chart { border: 1px solid #d9e1ea; border-radius: 8px; background: #fff; padding: 10px; }
+    .line-chart-title { font-weight: 700; color: #344054; margin-bottom: 6px; font-size: 14px; }
+    .line-chart svg { width: 100%; height: 178px; display: block; }
+    .axis-label { fill: #667085; font-size: 10px; }
+    .line-path { fill: none; stroke: #4b7bec; stroke-width: 2.5; }
+    .line-dot { fill: #4b7bec; }
+    .module-grid { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 12px; margin-top: 14px; }
+    .module-card { border: 1px solid #dde3ea; border-radius: 8px; padding: 14px; background: #ffffff; }
+    .vertical-bars { display: flex; gap: 6px; align-items: end; min-height: 190px; padding-top: 8px; overflow: hidden; }
+    .vertical-bar-item { display: grid; grid-template-rows: 24px 110px 46px; gap: 6px; text-align: center; flex: 1 1 0; min-width: 0; }
+    .vertical-value { font-size: 12px; font-weight: 700; color: #1f2933; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vertical-track { height: 110px; display: flex; align-items: end; justify-content: center; background: #f3f6fa; border-radius: 6px; overflow: hidden; }
+    .vertical-fill { width: 58%; background: #4b7bec; border-radius: 6px 6px 0 0; min-height: 2px; }
+    .vertical-label { font-size: 11px; color: #536273; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; }
+    .chart-grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px; }
+    .chart-card { border: 1px solid #dde3ea; border-radius: 8px; padding: 14px; background: #fff; }
+    .bar-row { display: grid; grid-template-columns: 128px 1fr 72px; gap: 10px; align-items: center; margin: 9px 0; }
+    .bar-label { color: #344054; font-size: 13px; }
+    .bar-track { height: 18px; background: #eef3f8; border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; background: #4b7bec; border-radius: 4px; min-width: 2px; }
+    .bar-value { text-align: right; font-variant-numeric: tabular-nums; color: #1f2933; font-size: 13px; }
+    details { border: 1px solid #dde3ea; border-radius: 8px; padding: 12px 14px; background: #fff; margin-top: 10px; }
+    summary { cursor: pointer; color: #18324a; font-weight: 700; }
+    details ol { margin: 10px 0 0 22px; padding: 0; line-height: 1.75; }
+    .detail-section { margin-top: 14px; }
+    .detail-section h4 { margin: 0 0 6px; color: #344054; }
     .hidden { display: none; }
     .busy { position: fixed; inset: 0; background: rgba(255,255,255,.72); display: none; align-items: center; justify-content: center; z-index: 20; }
     .busy.show { display: flex; }
     .spinner { width: 42px; height: 42px; border: 5px solid #c9d7e6; border-top-color: #1f6feb; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @media (max-width: 820px) { .flow { grid-template-columns: 1fr; } }
+    @media (max-width: 920px) { .flow, .module-grid, .chart-grid, .line-chart-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <header><strong>生产企业人类专家数据采集</strong></header>
+  <header><strong>甲公司人类专家数据采集</strong></header>
   <main>
     <section id="intro" class="panel intro">
       <h1>任务描述</h1>
-      <p>这个系统中有生产企业、消费企业、银行、普通市场和第三方补充市场。你扮演的是生产企业的经营者，其他主体由系统自动运行。</p>
-      <p>目标不是某一天赚最多，而是尽量让企业活得更久、经营更稳定。</p>
+      <p>这个系统中有甲公司、乙公司、银行以及第三方市场。<br>你是企业A的经理，目标是根据每天的经营状态做决策，让企业经营更稳定，存活更久。</p>
       <div class="flow" aria-label="每天运行流程">
-        <div class="flow-step"><strong>1. 查看今天状态</strong>现金、欠款、库存、还款压力和上一天经营结果会先展示给你。</div>
-        <div class="flow-step"><strong>2. 你做经营决策</strong>你只控制生产企业，填写贷款金额、原料K、原料L和产品K销售价格。</div>
-        <div class="flow-step"><strong>3. 银行处理贷款</strong>银行根据系统状态决定实际发放给企业的贷款。</div>
-        <div class="flow-step"><strong>4. 市场购买原料</strong>企业用现金购买原料K和原料L，普通市场买不够时会使用第三方补充市场。</div>
-        <div class="flow-step"><strong>5. 生产并销售产品K</strong>K和L配套投入生产，较少的一种会限制产品K产量，产品K再进入市场销售。</div>
-        <div class="flow-step"><strong>6. 还款并进入下一天</strong>系统结算收入、成本和债务；现金不足以还债时，企业会破产，本回合结束。</div>
-      </div>
-      <div class="role-box">
-        你只需要关注自己的经营决策：要不要借钱、买多少K和L、产品K卖什么价格。
+        <div class="flow-step"><strong>1. 查看今天状态</strong>你会看到现金、欠款、库存、价格和上一天经营结果。</div>
+        <div class="flow-step"><strong>2. 做出经营决策</strong>填写申请贷款金额、原料A采购需求、原料B采购需求和产品A销售价格。</div>
+        <div class="flow-step"><strong>3. 还款并进入下一天</strong>提交后系统自动完成交易、生产和清算；现金不足以还债时，本回合结束。</div>
       </div>
       <div class="row" style="justify-content:center;margin-top:24px">
         <label>参与者编号（可选） <input id="participant" value="anonymous" /></label>
-        <label>访问口令（如有） <input id="accessPassword" type="password" /></label>
+        <label>访问口令（输入123） <input id="accessPassword" type="password" /></label>
         <button id="startBtn">开始采集</button>
       </div>
     </section>
@@ -414,17 +664,19 @@ HTML = r"""<!doctype html>
           <strong id="dayTitle">第 - 天</strong>
           <span id="status" class="status"></span>
         </div>
-        <div id="blockInfo" class="block-info"></div>
       </div>
 
       <div class="panel">
-        <table>
-          <thead><tr><th>信息（红=有利变化，绿=不利/风险）</th><th>参考数值</th><th>相对上一天</th></tr></thead>
-          <tbody id="stateRows"></tbody>
-        </table>
+        <div id="infoModules" class="module-grid"></div>
       </div>
 
       <div class="panel">
+        <div id="charts" class="chart-grid"></div>
+        <div id="explainDetails"></div>
+      </div>
+
+      <div class="panel">
+        <div id="summaryNews" class="summary-card"></div>
         <div class="actions" id="actions"></div>
       </div>
 
@@ -436,13 +688,14 @@ HTML = r"""<!doctype html>
           <button id="nextEpisodeBtn" class="secondary" disabled>开始下一回合</button>
           <button id="endBtn" class="danger">结束采集</button>
         </div>
+        <div id="blockInfo" class="block-info"></div>
       </div>
     </section>
   </main>
   <div id="busy" class="busy"><div class="spinner"></div></div>
 
 <script>
-const actionNames = ["申请贷款金额", "原料K采购需求", "原料L采购需求", "产品K销售价格"];
+const actionNames = ["申请贷款金额", "原料A采购需求", "原料B采购需求", "产品A销售价格"];
 let sessionId = null;
 let current = null;
 let previousSnapshot = null;
@@ -452,6 +705,14 @@ let block = null;
 
 function $(id) { return document.getElementById(id); }
 function busy(show) { $("busy").classList.toggle("show", show); }
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 async function api(path, payload) {
   busy(true);
@@ -466,15 +727,150 @@ async function api(path, payload) {
 }
 
 function renderState(data, readonly=false) {
-  $("dayTitle").textContent = `生产企业第 ${data.day} 天可见的信息${readonly ? "（只读查看）" : ""}`;
-  const tbody = $("stateRows");
-  tbody.innerHTML = "";
-  data.rows.forEach(row => {
-    const tr = document.createElement("tr");
-    (row.tags || []).forEach(tag => tr.classList.add(tag));
-    tr.innerHTML = `<td>${row.name}</td><td>${row.value}</td><td>${row.change}</td>`;
-    tbody.appendChild(tr);
+  $("dayTitle").textContent = `甲公司第 ${data.day} 天可见的信息${readonly ? "（只读查看）" : ""}`;
+  renderDashboard(data.dashboard || {});
+}
+
+function renderDashboard(dashboard) {
+  const summary = dashboard.summary || {title: "经营简报", lines: []};
+  $("summaryNews").innerHTML = `
+    <h3>${escapeHtml(summary.title)}</h3>
+    ${(summary.lines || []).map(line => `<p>${escapeHtml(line)}</p>`).join("")}
+    ${renderLineCharts(dashboard.lineCharts || [])}
+  `;
+
+  $("infoModules").innerHTML = (dashboard.modules || []).map(module => `
+    <section class="module-card">
+      <h3>${escapeHtml(module.title)}</h3>
+      ${renderVerticalBars(module.items || [])}
+    </section>
+  `).join("");
+
+  $("charts").innerHTML = (dashboard.charts || []).map(chart => renderChart(chart)).join("");
+  $("charts").classList.toggle("hidden", !(dashboard.charts || []).length);
+  $("explainDetails").innerHTML = renderCombinedDetails(dashboard.details || []);
+}
+
+function renderLineCharts(charts) {
+  if (!charts.length) return "";
+  return `<div class="line-chart-grid">${charts.map(chart => renderLineChart(chart)).join("")}</div>`;
+}
+
+function renderLineChart(chart) {
+  const points = chart.points || [];
+  const width = 320;
+  const height = 178;
+  const left = 48;
+  const right = 12;
+  const top = 28;
+  const bottom = 42;
+  const plotW = width - left - right;
+  const plotH = height - top - bottom;
+  const values = points.map(point => Number(point.value) || 0);
+  const days = points.map(point => Number(point.day) || 1);
+  let minY = 0;
+  let maxY = Math.max(0, ...values);
+  if (Math.abs(maxY - minY) < 1e-9) {
+    maxY = 1;
+  }
+  const ySpan = Math.max(1, maxY - minY);
+  const minX = 0;
+  const maxX = Math.max(1, ...days);
+  const xSpan = Math.max(1, maxX - minX);
+  const yTicks = Array.from({length: 5}, (_, i) => minY + (ySpan * i / 4));
+  const xTicks = [0, ...Array.from(new Set(days.sort((a, b) => a - b)))];
+  const xOf = day => left + (day - minX) / xSpan * plotW;
+  const yOf = value => top + (maxY - value) / ySpan * plotH;
+  const coords = points.map(point => {
+    const x = xOf(Number(point.day) || minX);
+    const y = yOf(Number(point.value) || 0);
+    return {x, y, value: point.value, day: point.day};
   });
+  const path = coords.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  const zeroY = yOf(0);
+  return `
+    <section class="line-chart">
+      <div class="line-chart-title">${escapeHtml(chart.title)}</div>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">
+        <line x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}" stroke="#cfd8e3" />
+        <line x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" stroke="#cfd8e3" />
+        ${yTicks.map(value => {
+          const y = yOf(value);
+          return `
+            <line x1="${left}" y1="${y.toFixed(1)}" x2="${width - right}" y2="${y.toFixed(1)}" stroke="#eef2f6" />
+            <text x="${left - 6}" y="${(y + 3).toFixed(1)}" class="axis-label" text-anchor="end">${escapeHtml(value.toFixed(1).replace(/\.?0+$/, ""))}</text>
+          `;
+        }).join("")}
+        <line x1="${left}" y1="${zeroY.toFixed(1)}" x2="${width - right}" y2="${zeroY.toFixed(1)}" stroke="#98a2b3" stroke-width="1.4" />
+        ${xTicks.map(day => {
+          const x = xOf(day);
+          return `
+            <line x1="${x.toFixed(1)}" y1="${height - bottom}" x2="${x.toFixed(1)}" y2="${height - bottom + 4}" stroke="#98a2b3" />
+            <text x="${x.toFixed(1)}" y="${height - 18}" class="axis-label" text-anchor="middle">${escapeHtml(day)}</text>
+          `;
+        }).join("")}
+        <text x="${left - 6}" y="12" class="axis-label" text-anchor="end">净利润</text>
+        <text x="${width - 28}" y="${height - 5}" class="axis-label">天</text>
+        ${coords.length > 1 ? `<polyline class="line-path" points="${path}" />` : ""}
+        ${coords.map(point => `<circle class="line-dot" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3"><title>第${escapeHtml(point.day)}天：${escapeHtml(point.value)}</title></circle>`).join("")}
+      </svg>
+    </section>
+  `;
+}
+
+function renderVerticalBars(items) {
+  const max = Math.max(1, ...items.map(item => Math.abs(Number(item.raw ?? item.value) || 0)));
+  return `
+    <div class="vertical-bars">
+      ${items.map(item => {
+        const value = Number(item.raw ?? item.value) || 0;
+        const height = Math.max(2, Math.round(Math.abs(value) / max * 100));
+        return `
+          <div class="vertical-bar-item">
+            <div class="vertical-value">${escapeHtml(item.value)}</div>
+            <div class="vertical-track"><div class="vertical-fill" style="height:${height}%"></div></div>
+            <div class="vertical-label">${escapeHtml(item.label)}</div>
+          </div>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderCombinedDetails(details) {
+  if (!details.length) return "";
+  return `
+    <details>
+      <summary>更多规则和成交明细</summary>
+      ${details.map(detail => `
+        <section class="detail-section">
+          <h4>${escapeHtml(detail.title)}</h4>
+          <ol>
+            ${(detail.lines || []).map(line => `<li>${escapeHtml(line)}</li>`).join("")}
+          </ol>
+        </section>
+      `).join("")}
+    </details>
+  `;
+}
+
+function renderChart(chart) {
+  const bars = chart.bars || [];
+  const max = Math.max(1, ...bars.map(bar => Math.abs(Number(bar.value) || 0)));
+  return `
+    <section class="chart-card">
+      <h3>${escapeHtml(chart.title)}</h3>
+      ${bars.map(bar => {
+        const value = Number(bar.value) || 0;
+        const width = Math.max(2, Math.round(Math.abs(value) / max * 100));
+        return `
+          <div class="bar-row">
+            <div class="bar-label">${escapeHtml(bar.label)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>
+            <div class="bar-value">${escapeHtml(value.toFixed(2).replace(/\.?0+$/, ""))}</div>
+          </div>`;
+      }).join("")}
+    </section>
+  `;
 }
 
 function renderBlockInfo(status) {
@@ -788,7 +1184,14 @@ def api_step(payload):
         session["episode_durations"].append(decision_seconds)
         done, _ = collector.step(model_action, values, decision_seconds)
         session["human_days_in_block"] = int(session.get("human_days_in_block", 0)) + 1
-        previous = serialize_state(collector, state_before, day_before, readonly=True)
+        full_state_before = collector.history[-1].get("full_state") if collector.history else None
+        previous = serialize_state(
+            collector,
+            state_before,
+            day_before,
+            readonly=True,
+            full_state_override=full_state_before,
+        )
         previous["human_values"] = [input_number(value) for value in values]
         session["decision_started_at"] = time.perf_counter()
         result = {
@@ -800,7 +1203,13 @@ def api_step(payload):
         }
         if done:
             result["survival_days"] = collector.env.day
-            result["state"] = serialize_state(collector, state_before, day_before, readonly=True)
+            result["state"] = serialize_state(
+                collector,
+                state_before,
+                day_before,
+                readonly=True,
+                full_state_override=full_state_before,
+            )
             write_episode_summary(session, "episode_done", survival_days=collector.env.day)
         else:
             result["state"] = serialize_state(collector)
@@ -841,6 +1250,7 @@ def api_skip_to_next_block(payload):
                 session["last_skip_reason"] = f"系统已自动运行 {auto_days} 天；即使没有单项剧烈变化，也需要定期重新确认经营决策。"
 
         previous_state = last_auto["state"] if last_auto is not None else None
+        previous_full_state = last_auto.get("full_state") if last_auto is not None else None
         result = {
             "done": done,
             "auto_days": auto_days,
@@ -854,7 +1264,11 @@ def api_skip_to_next_block(payload):
             result["state"] = serialize_state(collector)
             write_episode_summary(session, "episode_done_during_auto_skip", survival_days=collector.env.day)
         else:
-            result["state"] = serialize_state(collector, previous_state_override=previous_state)
+            result["state"] = serialize_state(
+                collector,
+                previous_state_override=previous_state,
+                previous_full_state_override=previous_full_state,
+            )
         return result
 
 
