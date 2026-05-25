@@ -59,9 +59,8 @@ class RealActor(nn.Module):
 
 # 2. 判别器 (Discriminator): 负责给动作“打分”
 class RealDiscriminator(nn.Module):
-    def __init__(self, s_dim=33, a_dim=4, hidden_size=100, max_seq_len=6, nhead=4):
+    def __init__(self, s_dim=33, a_dim=4, hidden_size=100, max_seq_len=6, nhead=2):
         super(RealDiscriminator, self).__init__()
-        self.max_seq_len = max_seq_len
         self.net = nn.Sequential(
             nn.Linear(s_dim + a_dim, hidden_size),
             nn.Tanh(),
@@ -132,21 +131,6 @@ class enterprise_nnu:
                     values = torch.FloatTensor(group.values).to(self.device)
                     if len(values) > 0:
                         self.expert_episodes.append((values[:, :33], values[:, 33:37]))
-                expert_seq_len = max(1, int(getattr(config, 'MAX_HIST_LEN', 6)))
-                expert_seq_states, expert_seq_actions = [], []
-                for ep_s, ep_a in self.expert_episodes:
-                    for end in range(len(ep_s)):
-                        start = max(0, end - expert_seq_len + 1)
-                        s_window = ep_s[start:end + 1]
-                        a_window = ep_a[start:end + 1]
-                        if len(s_window) < expert_seq_len:
-                            pad_len = expert_seq_len - len(s_window)
-                            s_window = torch.cat([s_window[:1].repeat(pad_len, 1), s_window], dim=0)
-                            a_window = torch.cat([a_window[:1].repeat(pad_len, 1), a_window], dim=0)
-                        expert_seq_states.append(s_window)
-                        expert_seq_actions.append(a_window)
-                self.expert_seq_states = torch.stack(expert_seq_states, dim=0) if expert_seq_states else None
-                self.expert_seq_actions = torch.stack(expert_seq_actions, dim=0) if expert_seq_actions else None
                 print(f"✅ 专家记忆库已挂载！共包含 {self.expert_size} 条记录。")
             else:
                 raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
@@ -195,25 +179,20 @@ class enterprise_nnu:
         return self.expert_states[indices], self.expert_actions[indices]
 
     def sample_expert_sequence(self, batch_size, seq_len):
-        if getattr(self, 'expert_seq_states', None) is not None:
-            indices = torch.randint(0, len(self.expert_seq_states), (batch_size,), device=self.device)
-            return self.expert_seq_states[indices], self.expert_seq_actions[indices]
         if not getattr(self, 'expert_episodes', None):
             return None
         states, actions = [], []
         for _ in range(batch_size):
             ep_idx = torch.randint(0, len(self.expert_episodes), (1,), device=self.device).item()
             ep_s, ep_a = self.expert_episodes[ep_idx]
-            end = torch.randint(0, len(ep_s), (1,), device=self.device).item()
-            start = max(0, end - seq_len + 1)
-            s_window = ep_s[start:end + 1]
-            a_window = ep_a[start:end + 1]
-            if len(s_window) < seq_len:
-                pad_len = seq_len - len(s_window)
-                s_window = torch.cat([s_window[:1].repeat(pad_len, 1), s_window], dim=0)
-                a_window = torch.cat([a_window[:1].repeat(pad_len, 1), a_window], dim=0)
-            states.append(s_window)
-            actions.append(a_window)
+            if len(ep_s) < seq_len:
+                continue
+            end = torch.randint(seq_len - 1, len(ep_s), (1,), device=self.device).item()
+            start = end - seq_len + 1
+            states.append(ep_s[start:end + 1])
+            actions.append(ep_a[start:end + 1])
+        if not states:
+            return None
         return torch.stack(states, dim=0), torch.stack(actions, dim=0)
 
     def run_enterprise(self, state, new_ep):

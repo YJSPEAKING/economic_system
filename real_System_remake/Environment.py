@@ -51,7 +51,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="transformerv1.2，缓存区大小扩大",
+                         notes="transformerv1.3，回退加速功能，增加Actor的transformer功能",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
