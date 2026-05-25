@@ -611,7 +611,23 @@ HTML = r"""<!doctype html>
     .line-chart svg { width: 100%; height: 178px; display: block; }
     .axis-label { fill: #667085; font-size: 10px; }
     .line-path { fill: none; stroke: #4b7bec; stroke-width: 2.5; }
-    .line-dot { fill: #4b7bec; }
+    .line-dot { fill: #4b7bec; pointer-events: none; }
+    .line-dot-hit { fill: transparent; cursor: pointer; }
+    .line-tooltip {
+      position: fixed;
+      z-index: 1000;
+      display: none;
+      pointer-events: none;
+      background: rgba(24, 50, 74, 0.94);
+      color: #fff;
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 12px;
+      line-height: 1.45;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+      white-space: nowrap;
+    }
+    .line-tooltip.show { display: block; }
     .module-grid { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 12px; margin-top: 14px; }
     .module-card { border: 1px solid #dde3ea; border-radius: 8px; padding: 14px; background: #ffffff; }
     .vertical-bars { display: flex; gap: 6px; align-items: end; min-height: 190px; padding-top: 8px; overflow: hidden; }
@@ -645,7 +661,7 @@ HTML = r"""<!doctype html>
   <main>
     <section id="intro" class="panel intro">
       <h1>任务描述</h1>
-      <p>这个系统中有甲公司、乙公司、银行以及第三方市场。<br>你是企业A的经理，目标是根据每天的经营状态做决策，让企业经营更稳定，存活更久。</p>
+      <p>这个系统中有甲公司、乙公司、银行以及第三方市场。<br>你是甲公司的经理，目标是根据每天的经营状态做决策，让企业经营更稳定，存活更久。</p>
       <div class="flow" aria-label="每天运行流程">
         <div class="flow-step"><strong>1. 查看今天状态</strong>你会看到现金、欠款、库存、价格和上一天经营结果。</div>
         <div class="flow-step"><strong>2. 做出经营决策</strong>填写申请贷款金额、原料A采购需求、原料B采购需求和产品A销售价格。</div>
@@ -714,6 +730,66 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function formatChartNumber(value) {
+  const number = Number(value) || 0;
+  if (Math.abs(number) >= 10 || Number.isInteger(number)) return String(Math.round(number));
+  return number.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function formatTooltipNumber(value) {
+  return (Number(value) || 0).toFixed(2).replace(/\.?0+$/, "");
+}
+
+function niceChartStep(rawStep, maxValue) {
+  if (!Number.isFinite(rawStep) || rawStep <= 0) return 1;
+  const exponent = Math.floor(Math.log10(rawStep));
+  const scale = Math.pow(10, exponent);
+  const base = rawStep / scale;
+  let niceBase = 10;
+  if (base <= 1) niceBase = 1;
+  else if (base <= 2) niceBase = 2;
+  else if (base <= 5) niceBase = 5;
+  let step = niceBase * scale;
+  if (maxValue >= 10 && step < 10) step = 10;
+  return step;
+}
+
+function axisFromZero(maxValue) {
+  const rawMax = Math.max(1, Number(maxValue) || 0);
+  const step = niceChartStep(rawMax / 5, rawMax);
+  const maxY = Math.max(step, Math.ceil(rawMax / step) * step);
+  const ticks = [];
+  for (let value = 0; value <= maxY + step * 0.001; value += step) {
+    ticks.push(Number(value.toFixed(8)));
+  }
+  return {maxY, ticks};
+}
+
+function lineTooltipEl() {
+  let tooltip = $("lineTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "lineTooltip";
+    tooltip.className = "line-tooltip";
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function showLineTooltip(event, day, value) {
+  const tooltip = lineTooltipEl();
+  tooltip.innerHTML = `天数：${escapeHtml(day)}<br>净利润：${escapeHtml(formatTooltipNumber(value))}`;
+  const offset = 12;
+  tooltip.style.left = `${event.clientX + offset}px`;
+  tooltip.style.top = `${event.clientY + offset}px`;
+  tooltip.classList.add("show");
+}
+
+function hideLineTooltip() {
+  const tooltip = $("lineTooltip");
+  if (tooltip) tooltip.classList.remove("show");
+}
+
 async function api(path, payload) {
   busy(true);
   try {
@@ -761,7 +837,7 @@ function renderLineChart(chart) {
   const width = 320;
   const height = 178;
   const left = 48;
-  const right = 12;
+  const right = 30;
   const top = 28;
   const bottom = 42;
   const plotW = width - left - right;
@@ -769,22 +845,20 @@ function renderLineChart(chart) {
   const values = points.map(point => Number(point.value) || 0);
   const days = points.map(point => Number(point.day) || 1);
   let minY = 0;
-  let maxY = Math.max(0, ...values);
-  if (Math.abs(maxY - minY) < 1e-9) {
-    maxY = 1;
-  }
+  let {maxY, ticks: yTicks} = axisFromZero(Math.max(0, ...values));
   const ySpan = Math.max(1, maxY - minY);
   const minX = 0;
   const maxX = Math.max(1, ...days);
   const xSpan = Math.max(1, maxX - minX);
-  const yTicks = Array.from({length: 5}, (_, i) => minY + (ySpan * i / 4));
-  const xTicks = [0, ...Array.from(new Set(days.sort((a, b) => a - b)))];
+  const xTicks = [0, ...Array.from(new Set(days)).filter(day => day > 0).sort((a, b) => a - b)];
   const xOf = day => left + (day - minX) / xSpan * plotW;
   const yOf = value => top + (maxY - value) / ySpan * plotH;
   const coords = points.map(point => {
-    const x = xOf(Number(point.day) || minX);
-    const y = yOf(Number(point.value) || 0);
-    return {x, y, value: point.value, day: point.day};
+    const day = Number(point.day) || minX;
+    const value = Number(point.value) || 0;
+    const x = xOf(day);
+    const y = yOf(value);
+    return {x, y, value, day};
   });
   const path = coords.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
   const zeroY = yOf(0);
@@ -798,7 +872,7 @@ function renderLineChart(chart) {
           const y = yOf(value);
           return `
             <line x1="${left}" y1="${y.toFixed(1)}" x2="${width - right}" y2="${y.toFixed(1)}" stroke="#eef2f6" />
-            <text x="${left - 6}" y="${(y + 3).toFixed(1)}" class="axis-label" text-anchor="end">${escapeHtml(value.toFixed(1).replace(/\.?0+$/, ""))}</text>
+            <text x="${left - 6}" y="${(y + 3).toFixed(1)}" class="axis-label" text-anchor="end">${escapeHtml(formatChartNumber(value))}</text>
           `;
         }).join("")}
         <line x1="${left}" y1="${zeroY.toFixed(1)}" x2="${width - right}" y2="${zeroY.toFixed(1)}" stroke="#98a2b3" stroke-width="1.4" />
@@ -810,9 +884,14 @@ function renderLineChart(chart) {
           `;
         }).join("")}
         <text x="${left - 6}" y="12" class="axis-label" text-anchor="end">净利润</text>
-        <text x="${width - 28}" y="${height - 5}" class="axis-label">天</text>
+        <text x="${width - right + 6}" y="${height - bottom + 4}" class="axis-label">天</text>
         ${coords.length > 1 ? `<polyline class="line-path" points="${path}" />` : ""}
-        ${coords.map(point => `<circle class="line-dot" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3"><title>第${escapeHtml(point.day)}天：${escapeHtml(point.value)}</title></circle>`).join("")}
+        ${coords.map(point => `
+          <g onmousemove="showLineTooltip(event, ${point.day}, ${point.value})" onmouseleave="hideLineTooltip()">
+            <circle class="line-dot-hit" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="9"></circle>
+            <circle class="line-dot" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3"></circle>
+          </g>
+        `).join("")}
       </svg>
     </section>
   `;
