@@ -170,6 +170,11 @@ class TD3(object):
         self.a_bound = config.action_bound
         self.scope = config.scope
         self.max_hist_len = max(1, int(getattr(config, 'MAX_HIST_LEN', 1)))
+        self.use_transformer_discriminator = (
+            bool(getattr(config, 'USE_TRANSFORMER_DISCRIMINATOR', False))
+            and self.max_hist_len > 1
+            and self.scope == 'production1'
+        )
         self.use_transformer_actor = (
             bool(getattr(config, 'USE_TRANSFORMER_ACTOR', False))
             and self.max_hist_len > 1
@@ -180,7 +185,17 @@ class TD3(object):
             and self.max_hist_len > 1
             and self.scope == 'production1'
         )
-        memory_pick_len = self.max_hist_len if (self.use_transformer_actor or self.use_transformer_critic) else 1
+        memory_pick_len = self.max_hist_len if (
+            self.use_transformer_discriminator
+            or self.use_transformer_actor
+            or self.use_transformer_critic
+        ) else 1
+        if self.scope == 'production1':
+            print(
+                f"[Transformer ablation] D={self.use_transformer_discriminator}, "
+                f"Critic={self.use_transformer_critic}, Actor={self.use_transformer_actor}, "
+                f"hist_len={self.max_hist_len}, replay_pick_len={memory_pick_len}"
+            )
         self.memory = Memory(capacity=config.MEMORY_CAPACITY, dims=2 * self.s_dim + self.a_dim + 1,
                              pick_len=memory_pick_len)
         # ==========================================
@@ -465,7 +480,7 @@ class TD3(object):
                 # 开启循环“加练”模式
                 for _ in range(disc_update_ratio):
                     expert_seq = None
-                    if hasattr(self, 'sample_expert_sequence') and pick_len > 1:
+                    if self.use_transformer_discriminator and hasattr(self, 'sample_expert_sequence') and pick_len > 1:
                         expert_seq = self.sample_expert_sequence(self.BATCH_SIZE, pick_len)
                     if expert_seq is not None:
                         expert_s, expert_a = expert_seq
@@ -534,7 +549,7 @@ class TD3(object):
                 # 如果挂载了判别器，用它对刚抽样出的 b_s 和 b_a 进行实时打分
                 if hasattr(self, 'gail_disc') and 'fake_s_n' in locals():
                     # fake_s_n 和 fake_a_n 在上面的判别器更新块里已经标准化过了
-                    if pick_len > 1:
+                    if self.use_transformer_discriminator and pick_len > 1:
                         disc_logits = self.gail_disc(fake_s_seq_n, fake_a_seq_n)
                     else:
                         disc_logits = self.gail_disc(fake_s_n, fake_a_n)

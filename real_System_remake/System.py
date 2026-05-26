@@ -43,6 +43,23 @@ def seed_everything(seed=42):
 
 # 在程序第一行就执行！
 CURRENT_SEED = 184
+TRANSFORMER_ABLATION_PRESETS = {
+    # First run this: only the discriminator reads trajectory history.
+    'D_ONLY': dict(discriminator=True, critic=False, actor=False),
+    # Second run this if D_ONLY is better than the baseline.
+    'D_CRITIC': dict(discriminator=True, critic=True, actor=False),
+    # Final run this if D_CRITIC is stable enough.
+    'D_CRITIC_ACTOR': dict(discriminator=True, critic=True, actor=True),
+    # Optional control group: original GAIL+TD3 without Transformer history.
+    'BASELINE': dict(discriminator=False, critic=False, actor=False),
+}
+TRANSFORMER_ABLATION_MODE = os.environ.get('TRANSFORMER_ABLATION_MODE', 'D_ONLY').upper()
+if TRANSFORMER_ABLATION_MODE not in TRANSFORMER_ABLATION_PRESETS:
+    raise ValueError(
+        f"Unknown TRANSFORMER_ABLATION_MODE={TRANSFORMER_ABLATION_MODE}. "
+        f"Choose one of {list(TRANSFORMER_ABLATION_PRESETS)}."
+    )
+TRANSFORMER_ABLATION_FLAGS = TRANSFORMER_ABLATION_PRESETS[TRANSFORMER_ABLATION_MODE]
 
 use_wandb = True
 stable_at = 8000
@@ -66,8 +83,9 @@ enterprise_ddpg_config = Config(
     gail_reward_weight=2.0,
     gail_warmup_steps=5000,
     disc_update_ratio=1,
-    use_transformer_actor=True,
-    use_transformer_critic=True,
+    use_transformer_discriminator=TRANSFORMER_ABLATION_FLAGS['discriminator'],
+    use_transformer_critic=TRANSFORMER_ABLATION_FLAGS['critic'],
+    use_transformer_actor=TRANSFORMER_ABLATION_FLAGS['actor'],
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -107,6 +125,23 @@ bank_ddpg_config = Config(
     lrc_ra=2e-4
 )
 
+def sync_transformer_ablation_config():
+    environment_module.swanlab_config['notes'] = f"transformer ablation: {TRANSFORMER_ABLATION_MODE}"
+    environment_module.swanlab_config['transformer_ablation_config'] = {
+        'mode': TRANSFORMER_ABLATION_MODE,
+        'use_transformer_discriminator': TRANSFORMER_ABLATION_FLAGS['discriminator'],
+        'use_transformer_critic': TRANSFORMER_ABLATION_FLAGS['critic'],
+        'use_transformer_actor': TRANSFORMER_ABLATION_FLAGS['actor'],
+        'max_hist_len': enterprise_ddpg_config.MAX_HIST_LEN,
+    }
+    environment_module.swanlab_config['enterprise_ddpg_config'].update({
+        'use_transformer_discriminator': TRANSFORMER_ABLATION_FLAGS['discriminator'],
+        'use_transformer_critic': TRANSFORMER_ABLATION_FLAGS['critic'],
+        'use_transformer_actor': TRANSFORMER_ABLATION_FLAGS['actor'],
+        'max_hist_len': enterprise_ddpg_config.MAX_HIST_LEN,
+    })
+
+
 def apply_run_seed(seed):
     global CURRENT_SEED
     CURRENT_SEED = int(seed)
@@ -115,6 +150,7 @@ def apply_run_seed(seed):
     bank_ddpg_config.set_seed(CURRENT_SEED)
     environment_module.swanlab_config['enterprise_ddpg_config']['random_seed'] = CURRENT_SEED
     environment_module.swanlab_config['bank_ddpg_config']['random_seed'] = CURRENT_SEED
+    sync_transformer_ablation_config()
 
 bank_config = Bank_config(
     name='bank1',
@@ -139,7 +175,7 @@ class System:
     def __init__(self, seed=None):
         self.seed = CURRENT_SEED if seed is None else int(seed)
         apply_run_seed(self.seed)
-        self.env = Environment(name=f"seed_{self.seed}", lim_day=100)
+        self.env = Environment(name=f"{TRANSFORMER_ABLATION_MODE}_seed_{self.seed}", lim_day=100)
         for key in enterprise_add_list:
             config = copy.deepcopy(enterprise_config)
             config.name = key
@@ -292,7 +328,8 @@ class System:
 
 
 if __name__ == '__main__':
-    seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
+    # seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
+    seeds_to_run = [291]
     for seed in seeds_to_run:
         system = System(seed=seed)
         system.run()

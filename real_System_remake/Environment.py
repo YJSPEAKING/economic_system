@@ -19,6 +19,7 @@ third_market_price = 100  # 环境中第三方市场的价格是固定100
 enterprise_price = 8  # 企业的初始价格是8
 
 swanlab_config = {
+    'notes': 'transformer ablation',
     'bank_ddpg_config': {
         'learning_rate_actor': 1e-3,
         'learning_rate_critic': 2e-3,
@@ -51,7 +52,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="transformerv1.3，回退加速功能，增加Actor的transformer功能",
+                         notes=swanlab_config.get('notes', 'transformer ablation'),
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了

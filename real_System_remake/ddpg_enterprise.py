@@ -59,8 +59,9 @@ class RealActor(nn.Module):
 
 # 2. 判别器 (Discriminator): 负责给动作“打分”
 class RealDiscriminator(nn.Module):
-    def __init__(self, s_dim=33, a_dim=4, hidden_size=100, max_seq_len=6, nhead=2):
+    def __init__(self, s_dim=33, a_dim=4, hidden_size=100, max_seq_len=6, nhead=2, use_sequence=False):
         super(RealDiscriminator, self).__init__()
+        self.use_sequence = use_sequence
         self.net = nn.Sequential(
             nn.Linear(s_dim + a_dim, hidden_size),
             nn.Tanh(),
@@ -88,10 +89,12 @@ class RealDiscriminator(nn.Module):
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
         if x.dim() == 3:
-            seq_len = x.size(1)
-            h = self.seq_input(x) + self.pos_embed[:, :seq_len, :]
-            h = self.seq_encoder(h)
-            return self.seq_head(h[:, -1, :])
+            if self.use_sequence:
+                seq_len = x.size(1)
+                h = self.seq_input(x) + self.pos_embed[:, :seq_len, :]
+                h = self.seq_encoder(h)
+                return self.seq_head(h[:, -1, :])
+            x = x[:, -1, :]
         return self.net(x)
 
 class enterprise_nnu:
@@ -136,7 +139,18 @@ class enterprise_nnu:
                 raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
 
             # 4. 【阶段二：唤醒】加载判别器并解冻
-            self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4, max_seq_len=getattr(config, 'MAX_HIST_LEN', 6)).to(self.device)
+            self.use_transformer_discriminator = (
+                bool(getattr(config, 'USE_TRANSFORMER_DISCRIMINATOR', False))
+                and getattr(config, 'MAX_HIST_LEN', 1) > 1
+            )
+            self.max_hist_len = max(1, int(getattr(config, 'MAX_HIST_LEN', 6)))
+            self.disc_eval_history = []
+            self.gail_disc = RealDiscriminator(
+                s_dim=33,
+                a_dim=4,
+                max_seq_len=self.max_hist_len,
+                use_sequence=self.use_transformer_discriminator
+            ).to(self.device)
             disc_path = os.path.join(current_dir, 'pretrained_discriminator.pth')
             if os.path.exists(disc_path):
                 self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device), strict=False)
@@ -198,6 +212,8 @@ class enterprise_nnu:
     def run_enterprise(self, state, new_ep):
         if self.scope == 'production1':
             # 始终使用预训练时的标准化参数，保证输入分布稳定
+            if new_ep:
+                self.disc_eval_history = []
             state_np = np.array(state)
             norm_state = (state_np - self.obs_mean.cpu().numpy()) / np.sqrt(self.obs_var.cpu().numpy() + 1e-8)
             norm_state = np.clip(norm_state, -5.0, 5.0)
@@ -236,7 +252,16 @@ class enterprise_nnu:
                 a_n = (a_t - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
                 # 3. 计算内部奖励 (仅用于 SwanLab 观察，绝不存入经验池)
-                logits = self.gail_disc(s_n.unsqueeze(0), a_n.unsqueeze(0))
+                if self.use_transformer_discriminator:
+                    self.disc_eval_history.append((s_n.detach(), a_n.detach()))
+                    window = self.disc_eval_history[-self.max_hist_len:]
+                    if len(window) < self.max_hist_len:
+                        window = [window[0]] * (self.max_hist_len - len(window)) + window
+                    hist_s = torch.stack([item[0] for item in window], dim=0).unsqueeze(0)
+                    hist_a = torch.stack([item[1] for item in window], dim=0).unsqueeze(0)
+                    logits = self.gail_disc(hist_s, hist_a)
+                else:
+                    logits = self.gail_disc(s_n.unsqueeze(0), a_n.unsqueeze(0))
                 score = torch.sigmoid(logits)
                 # 建议这里直接用 score.item()，用 -log 如果不稳定会导致数值爆炸
                 r_int = score.item()

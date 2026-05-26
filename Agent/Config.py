@@ -18,6 +18,7 @@ class Config:
                  policy_noise: float = 0.2, discount: float = 0.99, max_hist_len=8, batch_lstm=256, update_every=50,
                  learn_start_steps: int = 1024, gail_reward_weight: float = 2.0,
                  gail_warmup_steps: int = 5000, disc_update_ratio: int = 1,
+                 use_transformer_discriminator: bool = False,
                  use_transformer_actor: bool = False, use_transformer_critic: bool = False,
                  reward_space: int = 1, ra_obs_space: int = 0, beta=0.2, ra_bound: float = 1.0, lra_ra=3e-4,
                  lrc_ra=3e-4, lr_alpha_ra=1e-4,
@@ -58,6 +59,7 @@ class Config:
         self.GAIL_REWARD_WEIGHT = gail_reward_weight
         self.GAIL_WARMUP_STEPS = gail_warmup_steps
         self.DISC_UPDATE_RATIO = disc_update_ratio
+        self.USE_TRANSFORMER_DISCRIMINATOR = use_transformer_discriminator
         self.USE_TRANSFORMER_ACTOR = use_transformer_actor
         self.USE_TRANSFORMER_CRITIC = use_transformer_critic
         if random_seed is None:
