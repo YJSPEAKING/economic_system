@@ -77,13 +77,14 @@ class enterprise_nnu:
         self.scope = config.scope
         self.enterprise = TD3(config=config)  # 正常的 TD3 实例
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.epi = None
 
         if self.scope == 'production1':
-            print(f"=== 🚀 {self.scope} 启动端到端联合训练 (DARL) 模式 ===")
+            print(f"=== {self.scope} 启动端到端联合训练 (DARL) 模式 ===")
             current_dir = os.path.dirname(os.path.abspath(__file__))
 
             # 保留这句提示，代表它是随机初始化的
-            print(f"🌱 TD3 Actor 将从零开始与环境及判别器进行对抗训练")
+            print("TD3 Actor 将从零开始与环境及判别器进行对抗训练")
 
             # 2. 读取静态标准化参数 (保持原样)
             rms_path = os.path.join(current_dir, 'obs_rms_params.pth')
@@ -102,9 +103,9 @@ class enterprise_nnu:
                 self.expert_states = expert_data[:, :33]
                 self.expert_actions = expert_data[:, 33:37]
                 self.expert_size = len(self.expert_states)
-                print(f"✅ 专家记忆库已挂载！共包含 {self.expert_size} 条记录。")
+                print(f"专家记忆库已挂载！共包含 {self.expert_size} 条记录。")
             else:
-                raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
+                raise FileNotFoundError(f"找不到专家数据文件: {csv_path}")
 
             # 4. 【阶段二：唤醒】加载判别器并解冻
             self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4).to(self.device)
@@ -157,7 +158,7 @@ class enterprise_nnu:
 
             # 调用 TD3 的 choose_action (此时 Actor 已是专家水平)
             h_epi, action = self.enterprise.choose_action(None if new_ep else self.epi, norm_state)
-            if new_ep:
+            if new_ep or self.epi is None:
                 self.epi = copy.deepcopy(h_epi)
             return action
 
@@ -165,7 +166,7 @@ class enterprise_nnu:
         state = np.array(state)
         h_epi = None if new_ep else self.epi
         h_epi, action = self.enterprise.choose_action(h_epi, state)
-        if new_ep:
+        if new_ep or self.epi is None:
             self.epi = copy.deepcopy(h_epi)
         return action
 
