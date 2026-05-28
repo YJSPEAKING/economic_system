@@ -254,6 +254,63 @@ def purchase_breakdown_text(title, local_pair, third_pair):
     )
 
 
+def business_warning_lines(state, prod, cons):
+    warnings = []
+    previous_price = raw_or_zero(state, 5)
+    third_a_price = cons["k_third_pair"][0] or raw_or_zero(state, 30)
+    third_a_num = cons["k_third_pair"][1]
+    sold = raw_or_zero(state, 3)
+    stock = raw_or_zero(state, 1)
+
+    if third_a_price > 0 and previous_price > third_a_price:
+        warnings.append(
+            f"昨天市场中第三方市场的产品A更便宜（本公司定价 {format_number(previous_price)}，"
+            f"第三方市场定价 {format_number(third_a_price)}）。在系统按低价优先购买的规则下，"
+            "乙公司可能优先购买第三方市场，本公司产品A销量可能受影响。"
+        )
+    if third_a_num > 0 and sold <= 1e-9 and stock > 0:
+        warnings.append(
+            f"昨天成交结果显示：乙公司从第三方市场买到 {format_number(third_a_num)} 个产品A，"
+            "本公司产品A销量为0。这个结果通常说明乙公司的购买需求被外部供给满足，"
+            "本公司产品A没有形成成交。"
+        )
+
+    a_total = prod["k_total"]
+    b_total = prod["l_total"]
+    if max(a_total, b_total) > 0:
+        imbalance = abs(a_total - b_total)
+        if imbalance >= 1 and imbalance / max(a_total, b_total) >= 0.1:
+            more_name, less_name = ("原料A", "原料B") if a_total > b_total else ("原料B", "原料A")
+            warnings.append(
+                f"昨天本公司实际买到的原料A和原料B不匹配（{more_name}比{less_name}多 "
+                f"{format_number(imbalance)}）。产品A按较少的{less_name}投入生产，"
+                f"多出来的{more_name}当天不能保存，因此这部分采购不会转化为当天产出。"
+            )
+
+    shortages = []
+    for name, need, got in (
+        ("原料A", raw_or_zero(state, 11), a_total),
+        ("原料B", raw_or_zero(state, 12), b_total),
+    ):
+        shortage = need - got
+        if need > 0 and shortage >= 1 and got < need * 0.8:
+            shortages.append(f"{name}少买到 {format_number(shortage)}")
+    if shortages:
+        warnings.append(
+            "昨天实际买到的原料少于填写的采购需求（" + "，".join(shortages) +
+            "）。这可能受现金约束或市场分配影响，后续产品A产量会按实际买到数量计算。"
+        )
+
+    debt_due = raw_or_zero(state, 9) + raw_or_zero(state, 10)
+    cash = raw_or_zero(state, 0)
+    if debt_due > cash:
+        warnings.append(
+            f"今天待还款 {format_number(debt_due)}，高于当前现金 {format_number(cash)}。"
+            "如果当天贷款和经营现金流无法覆盖还款，本回合存在结束风险。"
+        )
+    return warnings[:4]
+
+
 def dashboard_payload(collector, state, day, previous_state=None, full_state=None, previous_full_state=None):
     prod = production_metrics(state)
     cons = consumption_purchase_metrics(state)
@@ -272,17 +329,19 @@ def dashboard_payload(collector, state, day, previous_state=None, full_state=Non
     if previous_state is None:
         summary_lines = [
             "第一天刚开始，还没有上一天净利润记录。",
-            f"甲公司现在有 {format_number(cash)} 现金。你今天先决定借多少钱、买多少原料A和B、产品A卖多少钱。"
+            f"甲公司（本公司）现在有 {format_number(cash)} 现金。你今天先决定借多少钱、买多少原料A和B、产品A卖多少钱。"
         ]
+        summary_warnings = []
     else:
         summary_lines = [
-            f"昨天甲公司净利润是 {signed_number(cash_delta)}，现在现金是 {format_number(cash)}。",
+            f"昨天甲公司（本公司）净利润是 {signed_number(cash_delta)}，现在现金是 {format_number(cash)}。",
             (
                 f"乙公司昨天净利润是 {signed_number(consumption_cash_delta)}。它如果持续变差，后面购买产品A的能力也可能受影响。"
                 if consumption_cash_delta is not None
                 else "乙公司昨天净利润暂时看不到；等进入下一天后再观察它有没有变好或变差。"
             ),
         ]
+        summary_warnings = business_warning_lines(state, prod, cons)
 
     modules = [
         {
@@ -362,7 +421,7 @@ def dashboard_payload(collector, state, day, previous_state=None, full_state=Non
     ]
 
     return {
-        "summary": {"title": f"第 {day} 天经营小结", "lines": summary_lines},
+        "summary": {"title": f"第 {day} 天经营小结", "lines": summary_lines, "warnings": summary_warnings},
         "modules": modules,
         "lineCharts": profit_line_charts(collector),
         "charts": charts,
@@ -568,8 +627,7 @@ HTML = r"""<!doctype html>
   <title>甲公司人类专家数据采集</title>
   <style>
     body { margin: 0; font-family: "Microsoft YaHei", Arial, sans-serif; background: #f6f7f9; color: #1f2933; }
-    header { background: #18324a; color: white; padding: 18px 28px; }
-    main { max-width: 1180px; margin: 0 auto; padding: 22px; }
+    main { max-width: 1420px; margin: 0 auto; padding: 22px; }
     .panel { background: white; border: 1px solid #dde3ea; border-radius: 8px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
     .intro { text-align: center; padding: 60px 28px; }
     .intro h1 { margin: 0 0 18px; font-size: 30px; }
@@ -590,13 +648,24 @@ HTML = r"""<!doctype html>
     tr.risk_high td, tr.risk_medium td, tr.change_bad td { background: #e2f6e8; }
     tr.change_good td { background: #ffe6e6; }
     td { white-space: pre-line; line-height: 1.55; }
-    .actions { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 14px; }
+    .work-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 420px); gap: 16px; align-items: stretch; }
+    .info-column { min-width: 0; }
+    .info-column .panel:last-child, .decision-panel { margin-bottom: 0; }
+    .decision-panel { display: flex; flex-direction: column; align-self: stretch; }
+    .decision-title { margin-bottom: 12px; }
+    .decision-title h2 { margin: 0; font-size: 18px; color: #18324a; }
+    .decision-title p { margin: 6px 0 0; color: #596b7d; font-size: 13px; line-height: 1.55; }
+    .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .action-card { border: 1px solid #dde3ea; border-radius: 8px; padding: 12px; }
     .action-card label { display: block; font-weight: 600; margin-bottom: 8px; }
     .action-card input { width: calc(100% - 22px); text-align: center; }
     .hint { color: #546579; font-size: 13px; line-height: 1.5; margin-top: 8px; min-height: 38px; }
     .adjust { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .adjust button { height: 28px; padding: 0 8px; background: #eef3f8; color: #18324a; border: 1px solid #ccd6e0; }
+    .decision-submit { margin-top: 14px; display: grid; gap: 8px; }
+    .decision-submit #submitBtn { width: 100%; height: 42px; font-size: 15px; }
+    .decision-secondary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .decision-secondary button { width: 100%; padding: 0 8px; }
     .status { color: #546579; margin-left: 10px; }
     .block-info { margin-top: 14px; padding: 12px 14px; background: #f3f8ff; border: 1px solid #cfe0f5; border-radius: 8px; line-height: 1.65; }
     .block-info strong { color: #18324a; }
@@ -604,7 +673,7 @@ HTML = r"""<!doctype html>
     .summary-card { border-left: 4px solid #18324a; background: #f8fbff; padding: 14px 16px; border-radius: 6px; line-height: 1.75; }
     .summary-card h3, .chart-card h3, .module-card h3 { margin: 0 0 10px; color: #18324a; font-size: 17px; }
     .summary-card p { margin: 6px 0; }
-    .summary-card + .actions { margin-top: 14px; }
+    .summary-warning { color: #b42318; font-weight: 600; }
     .line-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
     .line-chart { border: 1px solid #d9e1ea; border-radius: 8px; background: #fff; padding: 10px; }
     .line-chart-title { font-weight: 700; color: #344054; margin-bottom: 6px; font-size: 14px; }
@@ -653,11 +722,12 @@ HTML = r"""<!doctype html>
     .busy.show { display: flex; }
     .spinner { width: 42px; height: 42px; border: 5px solid #c9d7e6; border-top-color: #1f6feb; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 1100px) { .work-layout { grid-template-columns: 1fr; } }
     @media (max-width: 920px) { .flow, .module-grid, .chart-grid, .line-chart-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 620px) { .actions, .decision-secondary { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <header><strong>甲公司人类专家数据采集</strong></header>
   <main>
     <section id="intro" class="panel intro">
       <h1>任务描述</h1>
@@ -665,7 +735,7 @@ HTML = r"""<!doctype html>
       <div class="flow" aria-label="每天运行流程">
         <div class="flow-step"><strong>1. 查看今天状态</strong>你会看到现金、欠款、库存、价格和上一天经营结果。</div>
         <div class="flow-step"><strong>2. 做出经营决策</strong>填写申请贷款金额、原料A采购需求、原料B采购需求和产品A销售价格。</div>
-        <div class="flow-step"><strong>3. 还款并进入下一天</strong>提交后系统自动完成交易、生产和清算；现金不足以还债时，本回合结束。</div>
+        <div class="flow-step"><strong>3. 系统自动运行并进入下一天</strong>提交后系统自动完成交易、生产和清算；现金不足以还债时，本回合结束。</div>
       </div>
       <div class="row" style="justify-content:center;margin-top:24px">
         <label>参与者编号（可选） <input id="participant" value="anonymous" /></label>
@@ -675,36 +745,46 @@ HTML = r"""<!doctype html>
     </section>
 
     <section id="app" class="hidden">
-      <div class="panel">
-        <div class="row">
-          <strong id="dayTitle">第 - 天</strong>
-          <span id="status" class="status"></span>
+      <div class="work-layout">
+        <div class="info-column">
+          <div class="panel">
+            <div class="row">
+              <strong id="dayTitle">第 - 天</strong>
+              <span id="status" class="status"></span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div id="infoModules" class="module-grid"></div>
+          </div>
+
+          <div class="panel">
+            <div id="charts" class="chart-grid"></div>
+            <div id="explainDetails"></div>
+          </div>
+
+          <div class="panel">
+            <div id="summaryNews" class="summary-card"></div>
+          </div>
         </div>
-      </div>
 
-      <div class="panel">
-        <div id="infoModules" class="module-grid"></div>
-      </div>
-
-      <div class="panel">
-        <div id="charts" class="chart-grid"></div>
-        <div id="explainDetails"></div>
-      </div>
-
-      <div class="panel">
-        <div id="summaryNews" class="summary-card"></div>
-        <div class="actions" id="actions"></div>
-      </div>
-
-      <div class="panel">
-        <div class="row">
-          <button id="prevBtn" class="secondary" disabled>查看上一天</button>
-          <button id="submitBtn">提交动作并进入下一天</button>
-          <button id="skipBtn" class="secondary" disabled>完成本段，跳到下一段</button>
-          <button id="nextEpisodeBtn" class="secondary" disabled>开始下一回合</button>
-          <button id="endBtn" class="danger">结束采集</button>
-        </div>
-        <div id="blockInfo" class="block-info"></div>
+        <aside class="panel decision-panel">
+          <div class="decision-title">
+            <h2>今日决策</h2>
+            <p>先填写原料A和原料B，再检查贷款和产品A定价。</p>
+          </div>
+          <div class="actions" id="actions"></div>
+          <div class="decision-submit">
+            <button id="submitBtn">提交动作并进入下一天</button>
+            <div class="decision-secondary">
+              <button id="prevBtn" class="secondary" disabled>查看上一天</button>
+              <button id="skipBtn" class="secondary" disabled>完成本段，跳到下一段</button>
+              <button id="nextEpisodeBtn" class="secondary" disabled>开始下一回合</button>
+              <button id="endBtn" class="danger">结束采集</button>
+            </div>
+          </div>
+          <div id="blockInfo" class="block-info"></div>
+        </aside>
       </div>
     </section>
   </main>
@@ -809,9 +889,12 @@ function renderState(data, readonly=false) {
 
 function renderDashboard(dashboard) {
   const summary = dashboard.summary || {title: "经营简报", lines: []};
+  const summaryLines = summary.lines || [];
   $("summaryNews").innerHTML = `
     <h3>${escapeHtml(summary.title)}</h3>
-    ${(summary.lines || []).map(line => `<p>${escapeHtml(line)}</p>`).join("")}
+    ${summaryLines[0] ? `<p>${escapeHtml(summaryLines[0])}</p>` : ""}
+    ${(summary.warnings || []).map(line => `<p class="summary-warning">${escapeHtml(line)}</p>`).join("")}
+    ${summaryLines.slice(1).map(line => `<p>${escapeHtml(line)}</p>`).join("")}
     ${renderLineCharts(dashboard.lineCharts || [])}
   `;
 
@@ -977,7 +1060,9 @@ function renderBlockInfo(status) {
 function renderActions(defaults, hints, limits, disabled=false) {
   const box = $("actions");
   box.innerHTML = "";
-  actionNames.forEach((name, i) => {
+  const actionLayoutOrder = [1, 2, 0, 3];
+  actionLayoutOrder.forEach(i => {
+    const name = actionNames[i];
     const limit = limits && limits[i] ? limits[i] : {min: 0, max: ""};
     const maxAttr = Number.isFinite(Number(limit.max)) ? `max="${limit.max}"` : "";
     const card = document.createElement("div");
