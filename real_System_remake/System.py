@@ -66,6 +66,7 @@ enterprise_ddpg_config = Config(
     gail_reward_weight=2.0,
     gail_warmup_steps=5000,
     disc_update_ratio=2,
+    use_transformer_critic=True,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -113,6 +114,12 @@ def apply_run_seed(seed):
     bank_ddpg_config.set_seed(CURRENT_SEED)
     environment_module.swanlab_config['enterprise_ddpg_config']['random_seed'] = CURRENT_SEED
     environment_module.swanlab_config['bank_ddpg_config']['random_seed'] = CURRENT_SEED
+    environment_module.swanlab_config['enterprise_ddpg_config'].update({
+        'use_transformer_discriminator': True,
+        'use_transformer_critic': enterprise_ddpg_config.USE_TRANSFORMER_CRITIC,
+        'use_transformer_actor': False,
+        'max_hist_len': enterprise_ddpg_config.MAX_HIST_LEN,
+    })
 
 bank_config = Bank_config(
     name='bank1',

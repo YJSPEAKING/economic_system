@@ -95,8 +95,9 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self,s_dim,a_dim):
+    def __init__(self, s_dim, a_dim, max_seq_len=1, use_history=False, hist_hidden=64, nhead=4):
         super(Critic,self).__init__()
+        self.use_history = use_history
 
         #Q1
         self.l1 = nn.Linear(s_dim+a_dim,128)
@@ -108,13 +109,56 @@ class Critic(nn.Module):
         self.l5 = nn.Linear(128,32)
         self.l6 = nn.Linear(32,1)
 
-    def forward(self,state,action):
+        self.hist_input = nn.Linear(s_dim + a_dim, hist_hidden)
+        self.hist_pos_embed = nn.Parameter(torch.zeros(1, max_seq_len, hist_hidden))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hist_hidden,
+            nhead=nhead,
+            dim_feedforward=hist_hidden * 2,
+            dropout=0.1,
+            activation='gelu',
+            batch_first=True
+        )
+        self.hist_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+        self.hist_norm = nn.LayerNorm(hist_hidden)
+
+        self.hl1 = nn.Linear(s_dim + a_dim + hist_hidden, 128)
+        self.hl2 = nn.Linear(128, 32)
+        self.hl3 = nn.Linear(32, 1)
+        self.hl4 = nn.Linear(s_dim + a_dim + hist_hidden, 128)
+        self.hl5 = nn.Linear(128, 32)
+        self.hl6 = nn.Linear(32, 1)
+
+    def _history_feature(self, hist_state, hist_action):
+        hist_state = torch.as_tensor(hist_state, dtype=torch.float32, device=device)
+        hist_action = torch.as_tensor(hist_action, dtype=torch.float32, device=device)
+        hist_sa = torch.cat([hist_state, hist_action], dim=-1)
+        seq_len = hist_sa.size(1)
+        h = self.hist_input(hist_sa) + self.hist_pos_embed[:, :seq_len, :]
+        h = self.hist_encoder(h)
+        return self.hist_norm(h[:, -1, :])
+
+    def forward(self,state,action, hist_state=None, hist_action=None):
         state = torch.as_tensor(state, dtype=torch.float32, device=device)
         action = torch.as_tensor(action, dtype=torch.float32, device=device)
         # state = torch.FloatTensor(state).to(device)
         # action = torch.FloatTensor(action).to(device)
 
         sa = torch.cat([state,action],1)
+
+        if self.use_history and hist_state is not None and hist_action is not None:
+            hist_feat = self._history_feature(hist_state, hist_action)
+            hsa = torch.cat([sa, hist_feat], dim=1)
+
+            q1 = F.leaky_relu(self.hl1(hsa))
+            q1 = F.leaky_relu(self.hl2(q1))
+            q1 = self.hl3(q1)
+
+            q2 = F.leaky_relu(self.hl4(hsa))
+            q2 = F.leaky_relu(self.hl5(q2))
+            q2 = self.hl6(q2)
+
+            return q1,q2
 
         q1 = F.leaky_relu(self.l1(sa))
         q1 = F.leaky_relu(self.l2(q1))
@@ -127,13 +171,21 @@ class Critic(nn.Module):
         return q1,q2
 
 
-    def Q1(self,state,action):
+    def Q1(self,state,action, hist_state=None, hist_action=None):
         state = torch.as_tensor(state, dtype=torch.float32, device=device)
         action = torch.as_tensor(action, dtype=torch.float32, device=device)
         # state = torch.FloatTensor(state).to(device)
         # action = torch.FloatTensor(action).to(device)
 
         sa = torch.cat([state,action],1)
+
+        if self.use_history and hist_state is not None and hist_action is not None:
+            hist_feat = self._history_feature(hist_state, hist_action)
+            hsa = torch.cat([sa, hist_feat], dim=1)
+            q1 = F.leaky_relu(self.hl1(hsa))
+            q1 = F.leaky_relu(self.hl2(q1))
+            q1 = self.hl3(q1)
+            return q1
 
         q1 = F.leaky_relu(self.l1(sa))
         q1 = F.leaky_relu(self.l2(q1))
@@ -174,7 +226,17 @@ class TD3(object):
         self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
         self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
         self.max_hist_len = max(1, int(getattr(config, 'MAX_HIST_LEN', 1)))
+        self.use_transformer_critic = (
+            bool(getattr(config, 'USE_TRANSFORMER_CRITIC', False))
+            and self.max_hist_len > 1
+            and self.scope == 'production1'
+        )
         self.sequence_store = TrajectorySequenceStore(self.max_hist_len)
+        if self.scope == 'production1':
+            print(
+                f"[Transformer] D=True, Critic={self.use_transformer_critic}, "
+                f"Actor=False, hist_len={self.max_hist_len}"
+            )
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
         # self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.a_dim))
@@ -223,7 +285,12 @@ class TD3(object):
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a)
 
-        self.critic = Critic(self.s_dim, self.a_dim).to(device)
+        self.critic = Critic(
+            self.s_dim,
+            self.a_dim,
+            max_seq_len=self.max_hist_len,
+            use_history=self.use_transformer_critic
+        ).to(device)
         self.critic_target = copy.deepcopy(self.critic)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.lr_c)
         # hard_update
@@ -308,6 +375,38 @@ class TD3(object):
         not_done[zero_next_state] = 0.0
         return not_done
 
+    def _critic_history_from_batch(self, batch, state, action):
+        if not self.use_transformer_critic:
+            return None, None
+
+        hist = self.sequence_store.histories_for(batch[6], batch[7])
+        if hist is None:
+            hist_state = np.repeat(np.asarray(state, dtype=np.float32)[:, np.newaxis, :], self.max_hist_len, axis=1)
+            hist_action = np.repeat(np.asarray(action, dtype=np.float32)[:, np.newaxis, :], self.max_hist_len, axis=1)
+        else:
+            hist_state, hist_action = hist
+
+        hist_state = torch.as_tensor(hist_state, dtype=torch.float32, device=device).detach()
+        hist_action = torch.as_tensor(hist_action, dtype=torch.float32, device=device)
+        return hist_state, hist_action
+
+    def _next_state_history(self, hist_state, next_state):
+        if hist_state is None:
+            return None
+        next_state = torch.as_tensor(next_state, dtype=torch.float32, device=device)
+        return torch.cat([hist_state[:, 1:, :], next_state.unsqueeze(1)], dim=1)
+
+    def _next_action_history(self, hist_action, next_action):
+        if hist_action is None:
+            return None
+        next_action = torch.as_tensor(next_action, dtype=torch.float32, device=device)
+        return torch.cat([hist_action[:, 1:, :], next_action.unsqueeze(1)], dim=1)
+
+    def _replace_last_history_action(self, hist_action, action):
+        if hist_action is None:
+            return None
+        return torch.cat([hist_action[:, :-1, :], action.unsqueeze(1)], dim=1)
+
     def learn(self):
 
         if self.pointer < self.learn_start_steps:
@@ -341,6 +440,7 @@ class TD3(object):
         b_s_ = torch.as_tensor(b_s__rm.reshape(-1, self.s_dim), dtype=torch.float32, device=device).detach()
         b_r_tensor = torch.as_tensor(b_r, dtype=torch.float32, device=device).detach()
         b_not_done_tensor = torch.as_tensor(b_not_done, dtype=torch.float32, device=device).detach()
+        b_s_hist_tensor, b_a_hist_tensor = self._critic_history_from_batch(b_M, b_s, b_a)
         fake_s_n = b_s_tensor
         fake_a_n = b_a_tensor
         if hasattr(self, 'act_mean') and hasattr(self, 'act_var'):
@@ -417,6 +517,7 @@ class TD3(object):
 
             with torch.no_grad():
                 # 计算扰动噪声后的动作 action_with_noise
+                target_action = self.actor_target(b_s_)
                 if self.is_smooth:
                     sample = torch.distributions.Normal(0., 1.)
                     a_dim = (self.a_dim,)
@@ -424,8 +525,9 @@ class TD3(object):
                     noise = torch.clamp(sample_ * self.eval_noise_scale, -2 * self.eval_noise_scale,
                                         2 * self.eval_noise_scale)
                     noise = noise.to(device)
-                    b_s_next_tensor = torch.as_tensor(b_s_, dtype=torch.float32, device=device)
-                    action_with_noise = (self.actor_target(b_s_next_tensor) + noise).clamp(-self.a_bound, self.a_bound)
+                    action_with_noise = (target_action + noise).clamp(-self.a_bound, self.a_bound)
+                else:
+                    action_with_noise = target_action.clamp(-self.a_bound, self.a_bound)
 
                 # ==========================================
                 # 🚀 核心修复：实时计算动态内部奖励！
@@ -457,14 +559,18 @@ class TD3(object):
                 # ==========================================
 
                 # 计算 target Q 值
-                target_Q1, target_Q2 = self.critic_target(b_s_, action_with_noise)
+                next_critic_hist_s = self._next_state_history(b_s_hist_tensor, b_s_)
+                next_critic_hist_a = self._next_action_history(b_a_hist_tensor, action_with_noise)
+                target_Q1, target_Q2 = self.critic_target(
+                    b_s_, action_with_noise, next_critic_hist_s, next_critic_hist_a
+                )
                 target_Q = torch.min(target_Q1, target_Q2)
 
                 # 🎯 使用融合了【实时判别器打分】和【真实环境利润】的混合奖励去更新 Critic！
                 target_Q = b_r_tensor_fused + self.GAMMA * b_not_done_tensor * target_Q
 
             # 获得当前 batch 的 Q estimates
-            current_Q1, current_Q2 = self.critic(b_s_tensor, b_a_tensor)
+            current_Q1, current_Q2 = self.critic(b_s_tensor, b_a_tensor, b_s_hist_tensor, b_a_hist_tensor)
             # 计算 critic loss = td - error
             self.critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
@@ -479,7 +585,11 @@ class TD3(object):
                 # 🚀 纯粹的 Actor 更新 (Pure Actor)
                 # Actor 绝不接触专家数据，仅通过最大化 Critic 的 Q 值来进化！
                 # ==========================================
-                self.actor_loss = -self.critic.Q1(b_s_tensor, self.actor(b_s_tensor)).mean()
+                actor_action = self.actor(b_s_tensor)
+                actor_hist_a = self._replace_last_history_action(b_a_hist_tensor, actor_action)
+                self.actor_loss = -self.critic.Q1(
+                    b_s_tensor, actor_action, b_s_hist_tensor, actor_hist_a
+                ).mean()
 
                 self.actor_optimizer.zero_grad()
                 self.actor_loss.backward()
@@ -495,6 +605,7 @@ class TD3(object):
         # 只计算critic 的loss 不进行网络更新
         else:
             with torch.no_grad():
+                target_action = self.actor_target(b_s_)
                 # 计算扰动噪声后的动作a_ (没有用师兄原本的噪声， 用的td3 的噪声
                 if self.is_smooth:
                     # noise = (torch.randn_like(torch.FloatTensor(b_a)) * self.policy_noise).clamp(-self.a_bound,self.a_bound)
@@ -507,19 +618,24 @@ class TD3(object):
                                         2 * self.eval_noise_scale)
                     # 3.24
                     noise = noise.to(device)
-                    b_s_tensor = torch.as_tensor(b_s_, dtype=torch.float32, device=device)  # 先转换类型
-                    action_with_noise = (self.actor_target(b_s_tensor) + noise).clamp(-self.a_bound, self.a_bound)
+                    action_with_noise = (target_action + noise).clamp(-self.a_bound, self.a_bound)
                     # action_with_noise = (self.actor_target(b_s_) + noise).clamp(-self.a_bound, self.a_bound)
+                else:
+                    action_with_noise = target_action.clamp(-self.a_bound, self.a_bound)
 
                 # 计算target Q 值
-                target_Q1,target_Q2 = self.critic_target(b_s_,action_with_noise)
+                next_critic_hist_s = self._next_state_history(b_s_hist_tensor, b_s_)
+                next_critic_hist_a = self._next_action_history(b_a_hist_tensor, action_with_noise)
+                target_Q1,target_Q2 = self.critic_target(
+                    b_s_, action_with_noise, next_critic_hist_s, next_critic_hist_a
+                )
                 target_Q = torch.min(target_Q1, target_Q2)
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q * self.discount
                 #3.24
                 target_Q = torch.as_tensor(b_r, dtype=torch.float32, device=device) + self.GAMMA * b_not_done_tensor * target_Q
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q
             # 获得当前batch Q estimates
-            current_Q1,current_Q2 = self.critic(b_s,b_a)
+            current_Q1,current_Q2 = self.critic(b_s_tensor, b_a_tensor, b_s_hist_tensor, b_a_hist_tensor)
             # 计算critic loss = td - error
             self.critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
         return self.critic_loss
