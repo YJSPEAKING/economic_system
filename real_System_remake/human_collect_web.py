@@ -1,5 +1,6 @@
 import csv
 import json
+import math
 import os
 import re
 import sys
@@ -19,6 +20,7 @@ from real_System_remake.human_collect_production1 import (
     DEFAULT_AUTO_POLICY,
     DEFAULT_SEED,
     HumanProductionCollector,
+    PARTICIPANT_INFO_FIELDS,
     display_rows,
     format_number,
     raw_state_value,
@@ -47,6 +49,13 @@ DYNAMIC_ABS_CHANGE = {
 }
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
+PARTICIPANT_INFO_OPTIONS = {
+    "age_group": ["20岁以下", "20-40岁", "40岁以上"],
+    "education": ["高中及以下", "大专/本科", "硕士及以上"],
+    "gender": ["男", "女"],
+    "econ_background": ["几乎没有", "学过一点", "比较熟悉"],
+    "strategy_experience": ["几乎没有", "偶尔接触", "经常接触"],
+}
 
 
 def safe_name(value):
@@ -64,6 +73,18 @@ def session_paths(participant_id, session_id):
         os.path.join(WEB_DATA_DIR, f"{prefix}_meta.csv"),
         os.path.join(WEB_DATA_DIR, f"{prefix}_summary.csv"),
     )
+
+
+def normalize_participant_info(payload):
+    raw_info = payload.get("participant_info") or {}
+    normalized = {}
+    for key, label in PARTICIPANT_INFO_FIELDS:
+        value = str(raw_info.get(key, "")).strip()
+        options = PARTICIPANT_INFO_OPTIONS.get(key, [])
+        if value not in options:
+            raise ValueError(f"请选择{label}。")
+        normalized[key] = value
+    return normalized
 
 
 def default_human_values(state):
@@ -156,6 +177,24 @@ def human_to_model_action(state, values):
     if not -0.5 <= price_action <= 0.5:
         raise ValueError(f"销售价格只能在 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)} 之间。")
     return [loan_action, k_action, l_action, price_action]
+
+
+def clamp_human_values_for_state(state, values):
+    if len(values) != 4:
+        raise ValueError("请填写四个动作数值。")
+    limits = action_limits(state)
+    clamped = []
+    for value, limit in zip(values, limits):
+        value = float(value)
+        if not math.isfinite(value):
+            raise ValueError("动作数值必须是有效数字。")
+        min_value = float(limit.get("min", 0.0))
+        max_value = limit.get("max")
+        value = max(min_value, value)
+        if max_value is not None:
+            value = min(float(max_value), value)
+        clamped.append(value)
+    return clamped
 
 
 def raw_or_zero(state, index):
@@ -522,6 +561,7 @@ def write_episode_summary(session, status, survival_days=None):
 
     columns = [
         "participant_id",
+        *[f"participant_{key}" for key, _ in PARTICIPANT_INFO_FIELDS],
         "seed",
         "episode",
         "status",
@@ -543,6 +583,10 @@ def write_episode_summary(session, status, survival_days=None):
             writer.writeheader()
         writer.writerow({
             "participant_id": session["participant_id"],
+            **{
+                f"participant_{key}": session.get("participant_info", {}).get(key, "")
+                for key, _ in PARTICIPANT_INFO_FIELDS
+            },
             "seed": collector.seed,
             "episode": collector.env.episode,
             "status": status,
@@ -717,13 +761,18 @@ HTML = r"""<!doctype html>
     details ol { margin: 10px 0 0 22px; padding: 0; line-height: 1.75; }
     .detail-section { margin-top: 14px; }
     .detail-section h4 { margin: 0 0 6px; color: #344054; }
+    .intake-grid { max-width: 980px; margin: 24px auto 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; text-align: left; }
+    .intake-grid label { display: grid; gap: 6px; color: #344054; font-size: 14px; }
+    .intake-grid input, .intake-grid select { width: 100%; box-sizing: border-box; height: 38px; border: 1px solid #cfd8e3; border-radius: 6px; padding: 6px 10px; background: #fff; font: inherit; }
+    .start-area { margin-top: 18px; display: flex; justify-content: center; }
+    .start-area button { min-width: 160px; height: 40px; }
     .hidden { display: none; }
     .busy { position: fixed; inset: 0; background: rgba(255,255,255,.72); display: none; align-items: center; justify-content: center; z-index: 20; }
     .busy.show { display: flex; }
     .spinner { width: 42px; height: 42px; border: 5px solid #c9d7e6; border-top-color: #1f6feb; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 1100px) { .work-layout { grid-template-columns: 1fr; } }
-    @media (max-width: 920px) { .flow, .module-grid, .chart-grid, .line-chart-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 920px) { .flow, .module-grid, .chart-grid, .line-chart-grid, .intake-grid { grid-template-columns: 1fr; } }
     @media (max-width: 620px) { .actions, .decision-secondary { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -737,9 +786,54 @@ HTML = r"""<!doctype html>
         <div class="flow-step"><strong>2. 做出经营决策</strong>填写申请贷款金额、原料A采购需求、原料B采购需求和产品A销售价格。</div>
         <div class="flow-step"><strong>3. 系统自动运行并进入下一天</strong>提交后系统自动完成交易、生产和清算；现金不足以还债时，本回合结束。</div>
       </div>
-      <div class="row" style="justify-content:center;margin-top:24px">
-        <label>参与者编号（可选） <input id="participant" value="anonymous" /></label>
-        <label>访问口令（输入123） <input id="accessPassword" type="password" /></label>
+      <div class="intake-grid">
+        <label>参与者编号（可选）
+          <input id="participant" value="anonymous" />
+        </label>
+        <label>年龄段
+          <select id="ageGroup">
+            <option value="">请选择</option>
+            <option value="20岁以下">20岁以下</option>
+            <option value="20-40岁">20-40岁</option>
+            <option value="40岁以上">40岁以上</option>
+          </select>
+        </label>
+        <label>受教育程度
+          <select id="education">
+            <option value="">请选择</option>
+            <option value="高中及以下">高中及以下</option>
+            <option value="大专/本科">大专/本科</option>
+            <option value="硕士及以上">硕士及以上</option>
+          </select>
+        </label>
+        <label>性别
+          <select id="gender">
+            <option value="">请选择</option>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </label>
+        <label>经济/管理相关背景
+          <select id="econBackground">
+            <option value="">请选择</option>
+            <option value="几乎没有">几乎没有</option>
+            <option value="学过一点">学过一点</option>
+            <option value="比较熟悉">比较熟悉</option>
+          </select>
+        </label>
+        <label>经营/策略类游戏经验
+          <select id="strategyExperience">
+            <option value="">请选择</option>
+            <option value="几乎没有">几乎没有</option>
+            <option value="偶尔接触">偶尔接触</option>
+            <option value="经常接触">经常接触</option>
+          </select>
+        </label>
+        <label>访问口令（输入123）
+          <input id="accessPassword" type="password" />
+        </label>
+      </div>
+      <div class="start-area">
         <button id="startBtn">开始采集</button>
       </div>
     </section>
@@ -792,6 +886,13 @@ HTML = r"""<!doctype html>
 
 <script>
 const actionNames = ["申请贷款金额", "原料A采购需求", "原料B采购需求", "产品A销售价格"];
+const participantFields = [
+  ["ageGroup", "age_group", "年龄段"],
+  ["education", "education", "受教育程度"],
+  ["gender", "gender", "性别"],
+  ["econBackground", "econ_background", "经济/管理相关背景"],
+  ["strategyExperience", "strategy_experience", "经营/策略类游戏经验"],
+];
 let sessionId = null;
 let current = null;
 let previousSnapshot = null;
@@ -1112,8 +1213,22 @@ function adjust(i, factor) { const el = $("action" + i); el.value = formatInputV
 function add(i, delta) { const el = $("action" + i); el.value = formatInputValue(bounded(i, Number(el.value || 0) + delta)); }
 function setPreset(i, value) { const el = $("action" + i); el.value = formatInputValue(bounded(i, value)); }
 
+function participantInfo() {
+  const info = {};
+  for (const [elementId, key, label] of participantFields) {
+    const value = $(elementId).value;
+    if (!value) throw new Error(`请选择${label}。`);
+    info[key] = value;
+  }
+  return info;
+}
+
 async function start() {
-  const data = await api("/api/start", {participant_id: $("participant").value, password: $("accessPassword").value});
+  const data = await api("/api/start", {
+    participant_id: $("participant").value,
+    password: $("accessPassword").value,
+    participant_info: participantInfo(),
+  });
   sessionId = data.session_id;
   current = data.state;
   block = data.block;
@@ -1146,7 +1261,7 @@ async function submitStep() {
 }
 
 async function skipToNextBlock() {
-  const data = await api("/api/skip_to_next_block", {session_id: sessionId});
+  const data = await api("/api/skip_to_next_block", {session_id: sessionId, values: values()});
   previousSnapshot = null;
   viewingPrevious = false;
   current = data.state;
@@ -1291,6 +1406,7 @@ def api_start(payload):
     if ACCESS_PASSWORD and payload.get("password", "") != ACCESS_PASSWORD:
         raise ValueError("访问口令不正确。")
     participant_id = payload.get("participant_id", "anonymous")
+    participant_info = normalize_participant_info(payload)
     auto_policy = payload.get("auto_policy", SERVER_AUTO_POLICY)
     if auto_policy not in {"td3", "fixed"}:
         raise ValueError("auto_policy 只能是 td3 或 fixed。")
@@ -1302,6 +1418,7 @@ def api_start(payload):
         meta_output_path=meta_output_path,
         auto_policy=auto_policy,
         participant_id=participant_id,
+        participant_info=participant_info,
     )
     collector.start_episode()
     session = {
@@ -1312,6 +1429,7 @@ def api_start(payload):
         "durations": [],
         "episode_durations": [],
         "participant_id": participant_id,
+        "participant_info": participant_info,
         "auto_policy": auto_policy,
         "output_path": output_path,
         "meta_output_path": meta_output_path,
@@ -1389,13 +1507,19 @@ def api_skip_to_next_block(payload):
             raise ValueError(f"本段还需要完成 {status['remaining_before_skip']} 天人工决策后才能跳过。")
 
         anchor_state = collector.current_state().copy()
+        requested_values = [float(value) for value in payload.get("values", [])]
+        skip_values = clamp_human_values_for_state(anchor_state, requested_values)
         auto_days = 0
         last_auto = None
         done = False
         trigger_reasons = []
 
         while auto_days < DYNAMIC_SKIP_MAX_DAYS:
-            last_auto = collector.auto_step()
+            current_state = collector.current_state().copy()
+            current_values = clamp_human_values_for_state(current_state, skip_values)
+            model_action = human_to_model_action(current_state, current_values)
+            last_auto = collector.advance_with_target_action(model_action)
+            last_auto["human_values"] = [input_number(value) for value in current_values]
             auto_days += 1
             done = bool(last_auto["done"])
             if done:

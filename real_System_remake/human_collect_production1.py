@@ -32,6 +32,14 @@ BACKGROUND_ACTOR_PATH = os.environ.get(
 )
 ACTION_NAMES = ["WNDF", "K", "L", "price"]
 ACTION_DISPLAY_NAMES = ["申请贷款金额", "原料A采购需求", "原料B采购需求", "产品A销售价格"]
+PARTICIPANT_INFO_FIELDS = [
+    ("age_group", "年龄段"),
+    ("education", "受教育程度"),
+    ("gender", "性别"),
+    ("econ_background", "经济管理背景"),
+    ("strategy_experience", "经营策略经验"),
+]
+PARTICIPANT_INFO_COLUMNS = [f"participant_{key}" for key, _ in PARTICIPANT_INFO_FIELDS]
 ENTERPRISE_ADD_LIST = {
     "production1": "K",
     "consumption1": "L",
@@ -318,12 +326,18 @@ class HumanProductionCollector:
         meta_output_path=DEFAULT_META_OUTPUT,
         auto_policy=DEFAULT_AUTO_POLICY,
         participant_id="anonymous",
+        participant_info=None,
     ):
         self.seed = int(seed)
         self.output_path = output_path
         self.meta_output_path = meta_output_path
         self.auto_policy = auto_policy
         self.participant_id = participant_id.strip() or "anonymous"
+        participant_info = participant_info or {}
+        self.participant_info = {
+            key: str(participant_info.get(key, "")).strip()
+            for key, _ in PARTICIPANT_INFO_FIELDS
+        }
         self.env = None
         self.state = None
         self.new_ep = True
@@ -493,18 +507,55 @@ class HumanProductionCollector:
             "action": np.array(target_action, dtype=float),
         }
 
+    def advance_with_target_action(self, target_action):
+        target_action = np.array(target_action, dtype=float)
+        if target_action.shape[0] != len(ACTION_NAMES):
+            raise ValueError("甲公司动作必须是4个数。")
+
+        state_before_action = self.current_state().copy()
+        full_state_before_action = {
+            key: np.array(value, dtype=float).copy()
+            for key, value in self.state.items()
+        }
+        day_before_action = self.env.day
+        action = self._build_action(target_action)
+        self.env.step(action)
+        next_state, reward, done = self.env.observe()
+        self.state = next_state
+        self.new_ep = False
+        self.state_history.append(self._state_snapshot())
+        return {
+            "done": done,
+            "reward": reward,
+            "day": day_before_action,
+            "state": state_before_action,
+            "full_state": full_state_before_action,
+            "action": target_action.copy(),
+        }
+
     def _save_row(self, state, model_action, human_values, day, decision_seconds):
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
         with open(self.output_path, "a", newline="", encoding="utf-8") as file:
             csv.writer(file).writerow([*state.tolist(), *model_action.tolist()])
 
         meta_exists = os.path.exists(self.meta_output_path)
+        participant_columns = PARTICIPANT_INFO_COLUMNS
+        include_participant_info = True
+        if meta_exists:
+            try:
+                with open(self.meta_output_path, "r", newline="", encoding="utf-8-sig") as file:
+                    header = next(csv.reader(file), [])
+                include_participant_info = all(column in header for column in participant_columns)
+            except StopIteration:
+                meta_exists = False
+                include_participant_info = True
         with open(self.meta_output_path, "a", newline="", encoding="utf-8-sig") as file:
             writer = csv.writer(file)
             if not meta_exists:
                 writer.writerow(
                     [
                         "participant_id",
+                        *participant_columns,
                         "seed",
                         "episode",
                         "day",
@@ -515,9 +566,13 @@ class HumanProductionCollector:
                         *[f"model_action_{name}" for name in ACTION_NAMES],
                     ]
                 )
+            participant_values = []
+            if include_participant_info:
+                participant_values = [self.participant_info.get(key, "") for key, _ in PARTICIPANT_INFO_FIELDS]
             writer.writerow(
                 [
                     self.participant_id,
+                    *participant_values,
                     self.seed,
                     self.env.episode,
                     day,
