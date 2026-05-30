@@ -67,6 +67,7 @@ enterprise_ddpg_config = Config(
     gail_warmup_steps=5000,
     disc_update_ratio=2,
     use_transformer_critic=True,
+    use_transformer_actor=True,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -117,7 +118,7 @@ def apply_run_seed(seed):
     environment_module.swanlab_config['enterprise_ddpg_config'].update({
         'use_transformer_discriminator': True,
         'use_transformer_critic': enterprise_ddpg_config.USE_TRANSFORMER_CRITIC,
-        'use_transformer_actor': False,
+        'use_transformer_actor': enterprise_ddpg_config.USE_TRANSFORMER_ACTOR,
         'max_hist_len': enterprise_ddpg_config.MAX_HIST_LEN,
     })
 

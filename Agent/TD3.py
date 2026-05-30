@@ -76,19 +76,51 @@ class TrajectorySequenceStore:
 
 
 class Actor(nn.Module):
-    def __init__(self,s_dim,a_dim,a_bound):
+    def __init__(self, s_dim, a_dim, a_bound, max_seq_len=1, use_history=False, hist_hidden=64, nhead=4):
         super(Actor, self).__init__()
 
+        self.use_history = use_history
         self.l1 = nn.Linear(s_dim,128)
         self.l2 = nn.Linear(128,32)
         self.l3 = nn.Linear(32,a_dim)
 
+        self.hist_input = nn.Linear(s_dim, hist_hidden)
+        self.hist_pos_embed = nn.Parameter(torch.zeros(1, max_seq_len, hist_hidden))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hist_hidden,
+            nhead=nhead,
+            dim_feedforward=hist_hidden * 2,
+            dropout=0.0,
+            activation='gelu',
+            batch_first=True
+        )
+        self.hist_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+        self.hist_norm = nn.LayerNorm(hist_hidden)
+
+        self.hl1 = nn.Linear(s_dim + hist_hidden, 128)
+        self.hl2 = nn.Linear(128, 32)
+        self.hl3 = nn.Linear(32, a_dim)
+
         self.a_bound = a_bound
 
-    def forward(self,state):
+    def _history_feature(self, hist_state):
+        hist_state = torch.as_tensor(hist_state, dtype=torch.float32, device=device)
+        seq_len = hist_state.size(1)
+        h = self.hist_input(hist_state) + self.hist_pos_embed[:, :seq_len, :]
+        h = self.hist_encoder(h)
+        return self.hist_norm(h[:, -1, :])
+
+    def forward(self, state, hist_state=None):
         #3.24
         # state = torch.FloatTensor(state).to(device)
         state = torch.as_tensor(state, dtype=torch.float32, device=device)
+        if self.use_history and hist_state is not None:
+            hist_feat = self._history_feature(hist_state)
+            hs = torch.cat([state, hist_feat], dim=1)
+            a = F.tanh(self.hl1(hs))
+            a = F.leaky_relu(self.hl2(a))
+            return self.a_bound * torch.tanh(self.hl3(a))
+
         a = F.tanh(self.l1(state))
         a = F.leaky_relu(self.l2(a))
         return self.a_bound * torch.tanh(self.l3(a))
@@ -231,11 +263,16 @@ class TD3(object):
             and self.max_hist_len > 1
             and self.scope == 'production1'
         )
+        self.use_transformer_actor = (
+            bool(getattr(config, 'USE_TRANSFORMER_ACTOR', False))
+            and self.max_hist_len > 1
+            and self.scope == 'production1'
+        )
         self.sequence_store = TrajectorySequenceStore(self.max_hist_len)
         if self.scope == 'production1':
             print(
                 f"[Transformer] D=True, Critic={self.use_transformer_critic}, "
-                f"Actor=False, hist_len={self.max_hist_len}"
+                f"Actor={self.use_transformer_actor}, hist_len={self.max_hist_len}"
             )
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
@@ -281,7 +318,13 @@ class TD3(object):
         self.lr_c = self.LR_C
 
         # init Actor and Critic network(eval,target)
-        self.actor = Actor(self.s_dim, self.a_dim, self.a_bound).to(device)
+        self.actor = Actor(
+            self.s_dim,
+            self.a_dim,
+            self.a_bound,
+            max_seq_len=self.max_hist_len,
+            use_history=self.use_transformer_actor
+        ).to(device)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a)
 
@@ -300,6 +343,30 @@ class TD3(object):
         for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
             target_param.data.copy_(param.data)
 
+    def _actor_history_tensor(self, temp, state):
+        if not self.use_transformer_actor:
+            return None
+
+        state = np.asarray(state, dtype=np.float32).reshape(-1)
+        states = temp.setdefault('states', [])
+        window = states + [state]
+        if len(window) < self.max_hist_len:
+            window = [window[0]] * (self.max_hist_len - len(window)) + window
+        else:
+            window = window[-self.max_hist_len:]
+
+        hist_state = np.stack(window, axis=0)[np.newaxis, :, :]
+        return torch.as_tensor(hist_state, dtype=torch.float32, device=device)
+
+    def _remember_actor_state(self, temp, state):
+        if not self.use_transformer_actor:
+            return
+
+        states = temp.setdefault('states', [])
+        states.append(np.asarray(state, dtype=np.float32).reshape(-1).copy())
+        if len(states) > self.max_hist_len:
+            del states[:-self.max_hist_len]
+
     def choose_action(self, h_epi, state):
         c = np.array(state)[np.newaxis,:]
         # rms 疑似不管用
@@ -316,6 +383,8 @@ class TD3(object):
                 self.var = self.var_init +delta_step * (self.var_stable - self.var_init)/(self.var_stable_at - self.var_drop_at)
         if h_epi is None:
             h_epi = self.memory.new_ep()
+            self.episode_temp[h_epi] = dict()
+        elif h_epi not in self.episode_temp:
             self.episode_temp[h_epi] = dict()
         temp = self.episode_temp[h_epi]
         #
@@ -335,7 +404,9 @@ class TD3(object):
             action = np.clip(action + np.random.normal([0 for i in range(self.a_dim)],self.var), 0.001, 100000000) # 固定值
 
         '''
-        list = [self.actor(state.reshape(1, -1))]
+        state_array = np.asarray(state, dtype=np.float32)
+        actor_hist_state = self._actor_history_tensor(temp, state_array)
+        list = [self.actor(state_array.reshape(1, -1), actor_hist_state)]
         action = list[0][0]
         if isPercent:
             action = action.cpu().detach() + np.random.normal([0 for i in range(self.a_dim)], self.var)
@@ -348,9 +419,11 @@ class TD3(object):
             action = np.clip(action.cpu().detach() + np.random.normal([0 for i in range(self.a_dim)], self.var), 0.001,
                              100000000)  # 固定值
 
+        self._remember_actor_state(temp, state_array)
         return h_epi,action.numpy()
 
     def episode_feedback(self,h_epi, state, action, reward, final_state):
+        episode_finished = final_state is not None
         if final_state is not None:
             final_state = np.zeros(len(final_state))
         self.pointer += 1
@@ -361,6 +434,8 @@ class TD3(object):
 
         ret_h_epi = self.memory.store_transition(h_epi, state, action, reward, final_state)
         self.sequence_store.record(h_epi, state, action)
+        if episode_finished:
+            self.episode_temp.pop(h_epi, None)
         return ret_h_epi
 
     def mark(self):
@@ -376,7 +451,7 @@ class TD3(object):
         return not_done
 
     def _critic_history_from_batch(self, batch, state, action):
-        if not self.use_transformer_critic:
+        if not (self.use_transformer_critic or self.use_transformer_actor):
             return None, None
 
         hist = self.sequence_store.histories_for(batch[6], batch[7])
@@ -517,7 +592,8 @@ class TD3(object):
 
             with torch.no_grad():
                 # 计算扰动噪声后的动作 action_with_noise
-                target_action = self.actor_target(b_s_)
+                next_critic_hist_s = self._next_state_history(b_s_hist_tensor, b_s_)
+                target_action = self.actor_target(b_s_, next_critic_hist_s)
                 if self.is_smooth:
                     sample = torch.distributions.Normal(0., 1.)
                     a_dim = (self.a_dim,)
@@ -559,7 +635,6 @@ class TD3(object):
                 # ==========================================
 
                 # 计算 target Q 值
-                next_critic_hist_s = self._next_state_history(b_s_hist_tensor, b_s_)
                 next_critic_hist_a = self._next_action_history(b_a_hist_tensor, action_with_noise)
                 target_Q1, target_Q2 = self.critic_target(
                     b_s_, action_with_noise, next_critic_hist_s, next_critic_hist_a
@@ -585,7 +660,7 @@ class TD3(object):
                 # 🚀 纯粹的 Actor 更新 (Pure Actor)
                 # Actor 绝不接触专家数据，仅通过最大化 Critic 的 Q 值来进化！
                 # ==========================================
-                actor_action = self.actor(b_s_tensor)
+                actor_action = self.actor(b_s_tensor, b_s_hist_tensor)
                 actor_hist_a = self._replace_last_history_action(b_a_hist_tensor, actor_action)
                 self.actor_loss = -self.critic.Q1(
                     b_s_tensor, actor_action, b_s_hist_tensor, actor_hist_a
@@ -605,7 +680,8 @@ class TD3(object):
         # 只计算critic 的loss 不进行网络更新
         else:
             with torch.no_grad():
-                target_action = self.actor_target(b_s_)
+                next_critic_hist_s = self._next_state_history(b_s_hist_tensor, b_s_)
+                target_action = self.actor_target(b_s_, next_critic_hist_s)
                 # 计算扰动噪声后的动作a_ (没有用师兄原本的噪声， 用的td3 的噪声
                 if self.is_smooth:
                     # noise = (torch.randn_like(torch.FloatTensor(b_a)) * self.policy_noise).clamp(-self.a_bound,self.a_bound)
@@ -624,7 +700,6 @@ class TD3(object):
                     action_with_noise = target_action.clamp(-self.a_bound, self.a_bound)
 
                 # 计算target Q 值
-                next_critic_hist_s = self._next_state_history(b_s_hist_tensor, b_s_)
                 next_critic_hist_a = self._next_action_history(b_a_hist_tensor, action_with_noise)
                 target_Q1,target_Q2 = self.critic_target(
                     b_s_, action_with_noise, next_critic_hist_s, next_critic_hist_a
