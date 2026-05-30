@@ -1,0 +1,2 @@
+﻿participant_id,seed,episode,status,survival_days,human_decision_days,episode_decision_seconds,avg_seconds_per_decision,decisions_per_minute,episode_wall_seconds,wall_decisions_per_minute,rows_saved_total,auto_policy,expert_output_path,meta_output_path
+123,184,0,episode_done,99,98,1150.031,11.735,5.113,1183.799,4.967,98,td3,D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\human_collect_web_data\123_20260529_151007_24d34cd6_expert.csv,D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\human_collect_web_data\123_20260529_151007_24d34cd6_meta.csv
