@@ -46,7 +46,7 @@ CURRENT_SEED = 184
 
 use_wandb = True
 stable_at = 8000
-end_at = 100000
+end_at = 180000
 use_rbtree = False
 # Notice 如果修改lstm的隐藏层节点数量，需要去经验池get batch函数里同步修改
 enterprise_ddpg_config = Config(
@@ -120,6 +120,7 @@ def apply_run_seed(seed):
         'use_transformer_critic': enterprise_ddpg_config.USE_TRANSFORMER_CRITIC,
         'use_transformer_actor': enterprise_ddpg_config.USE_TRANSFORMER_ACTOR,
         'max_hist_len': enterprise_ddpg_config.MAX_HIST_LEN,
+        'var_end_at': enterprise_ddpg_config.VAR_END_AT,
     })
 
 bank_config = Bank_config(

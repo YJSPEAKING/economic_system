@@ -36,7 +36,8 @@ swanlab_config = {
         'use_transformer_discriminator': True,
         'use_transformer_critic': True,
         'use_transformer_actor': True,
-        'max_hist_len': 6
+        'max_hist_len': 6,
+        'var_end_at': 180000
     },
     'attention_config': {
         'nums_heads': 4
@@ -55,7 +56,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="transformerv1.3, D+Critic+Actor transformer",
+                         notes="transformerv1.3, D+Critic+Actor transformer, end_at=180000",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
