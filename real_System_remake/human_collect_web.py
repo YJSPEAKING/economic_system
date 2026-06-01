@@ -350,6 +350,66 @@ def business_warning_lines(state, prod, cons):
     return warnings[:4]
 
 
+def production_flow_detail_html():
+    return """
+      <div class="production-flow-detail" aria-label="产品制作与市场流转示意图">
+        <div class="flow-market-row">
+          <div class="flow-node flow-market">
+            <strong>普通市场</strong>
+            <span>存放上一天进入市场的原料A和原料B</span>
+            <small>原料A来自甲公司的产品A；原料B来自乙公司的产品B</small>
+          </div>
+          <div class="flow-node flow-third-market">
+            <strong>第三方市场</strong>
+            <span>提供补充原料A和补充原料B</span>
+            <small>普通市场不足或价格不合适时，企业可能从这里补充购买</small>
+          </div>
+        </div>
+
+        <div class="flow-lanes">
+          <div class="flow-lane">
+            <div class="flow-lane-title">甲公司生产循环</div>
+            <div class="flow-node">
+              <strong>原料A + 原料B</strong>
+              <span>甲公司从普通市场和第三方市场中购买</span>
+              <small>原料当天购买、当天投入生产，不跨天保存。</small>
+            </div>
+            <div class="flow-arrow"><span>投入甲公司</span></div>
+            <div class="flow-node flow-company-a">
+              <strong>甲公司</strong>
+              <span>使用原料A和原料B进行生产</span>
+              <small>产品A产量 = 2.5 × min(买到的原料A, 买到的原料B)。</small>
+            </div>
+            <div class="flow-arrow"><span>当天生产</span></div>
+            <div class="flow-node flow-product-a">
+              <strong>产品A</strong>
+              <span>下一天进入普通市场，成为原料A</span>
+            </div>
+          </div>
+
+          <div class="flow-lane">
+            <div class="flow-lane-title">乙公司生产循环</div>
+            <div class="flow-node">
+              <strong>原料A + 原料B</strong>
+              <span>乙公司也会从普通市场和第三方市场中购买</span>
+              <small>乙公司的行为由系统自动决策。</small>
+            </div>
+            <div class="flow-arrow"><span>投入乙公司</span></div>
+            <div class="flow-node flow-company-b">
+              <strong>乙公司</strong>
+              <span>使用原料A和原料B进行生产</span>
+            </div>
+            <div class="flow-arrow"><span>当天生产</span></div>
+            <div class="flow-node flow-product-b">
+              <strong>产品B</strong>
+              <span>下一天进入普通市场，成为原料B</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    """
+
+
 def dashboard_payload(collector, state, day, previous_state=None, full_state=None, previous_full_state=None):
     prod = production_metrics(state)
     cons = consumption_purchase_metrics(state)
@@ -420,13 +480,8 @@ def dashboard_payload(collector, state, day, previous_state=None, full_state=Non
 
     details = [
         {
-            "title": "原料、生产和销售规则",
-            "lines": [
-                "原料A和原料B需要配套投入生产，少的一种会限制产品A产量。",
-                "产品A产量 = 2.5 × min(买到的原料A, 买到的原料B)。",
-                "原料当天购买、当天投入生产，不跨天保存。",
-                "产品A进入市场后，价格越高不一定越好，过高可能更难卖出。",
-            ],
+            "title": "产品制作与市场流转示意图",
+            "html": production_flow_detail_html(),
         },
         {
             "title": "市场购买规则",
@@ -761,6 +816,25 @@ HTML = r"""<!doctype html>
     details ol { margin: 10px 0 0 22px; padding: 0; line-height: 1.75; }
     .detail-section { margin-top: 14px; }
     .detail-section h4 { margin: 0 0 6px; color: #344054; }
+    .production-flow-detail { margin-top: 10px; border: 1px solid #d9e1ea; border-radius: 8px; background: #f8fbff; padding: 12px; }
+    .flow-market-row, .flow-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .flow-market-row { margin-bottom: 12px; }
+    .flow-lane { display: grid; grid-template-columns: 1fr; gap: 8px; border: 1px solid #d9e1ea; border-radius: 8px; background: #ffffff; padding: 12px; }
+    .flow-lane-title { text-align: center; color: #18324a; font-weight: 700; }
+    .flow-node { border: 1px solid #d9e1ea; border-radius: 8px; background: #fff; padding: 10px 12px; min-height: 86px; display: grid; align-content: center; gap: 4px; text-align: center; }
+    .flow-node strong { color: #18324a; font-size: 15px; }
+    .flow-node span { color: #344054; line-height: 1.45; }
+    .flow-node small { color: #596b7d; line-height: 1.45; }
+    .flow-market { background: #eaf4ff; border-color: #b9d9ff; }
+    .flow-third-market { background: #fff0ee; border-color: #ffc9c2; }
+    .flow-company-a { background: #fff7e6; border-color: #f3c66d; }
+    .flow-company-b { background: #ecf9f0; border-color: #b9dfbf; }
+    .flow-product-a { background: #eef6ff; border-color: #b9d9ff; }
+    .flow-product-b { background: #effaf2; border-color: #b9dfbf; }
+    .flow-arrow { position: relative; display: grid; place-items: center; min-height: 36px; color: #42556c; text-align: center; font-size: 12px; line-height: 1.35; z-index: 1; }
+    .flow-arrow::after { content: ""; position: absolute; top: 4px; bottom: 4px; left: 50%; width: 2px; background: #8aa1b5; transform: translateX(-50%); z-index: -1; }
+    .flow-arrow::before { content: ""; position: absolute; bottom: 4px; left: 50%; width: 9px; height: 9px; border-top: 2px solid #8aa1b5; border-right: 2px solid #8aa1b5; transform: translateX(-50%) rotate(135deg); z-index: -1; }
+    .flow-arrow span { display: inline-block; background: #ffffff; padding: 2px 5px; border-radius: 4px; }
     .intake-grid { max-width: 980px; margin: 24px auto 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; text-align: left; }
     .intake-grid label { display: grid; gap: 6px; color: #344054; font-size: 14px; }
     .intake-grid input, .intake-grid select { width: 100%; box-sizing: border-box; height: 38px; border: 1px solid #cfd8e3; border-radius: 6px; padding: 6px 10px; background: #fff; font: inherit; }
@@ -772,7 +846,7 @@ HTML = r"""<!doctype html>
     .spinner { width: 42px; height: 42px; border: 5px solid #c9d7e6; border-top-color: #1f6feb; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 1100px) { .work-layout { grid-template-columns: 1fr; } }
-    @media (max-width: 920px) { .flow, .module-grid, .chart-grid, .line-chart-grid, .intake-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 920px) { .flow, .module-grid, .chart-grid, .line-chart-grid, .intake-grid, .flow-market-row, .flow-lanes { grid-template-columns: 1fr; } }
     @media (max-width: 620px) { .actions, .decision-secondary { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -1107,9 +1181,11 @@ function renderCombinedDetails(details) {
       ${details.map(detail => `
         <section class="detail-section">
           <h4>${escapeHtml(detail.title)}</h4>
-          <ol>
-            ${(detail.lines || []).map(line => `<li>${escapeHtml(line)}</li>`).join("")}
-          </ol>
+          ${detail.html ? detail.html : `
+            <ol>
+              ${(detail.lines || []).map(line => `<li>${escapeHtml(line)}</li>`).join("")}
+            </ol>
+          `}
         </section>
       `).join("")}
     </details>
