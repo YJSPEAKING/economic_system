@@ -58,6 +58,7 @@ enterprise_ddpg_config = Config(
     var_end_at=end_at,
     learning_rate_actor=1e-3,
     learning_rate_critic=2e-3,
+    learning_rate_critic_transformer=5e-4,
     learning_rate_decay=1,
     random_seed=184,   # 传入 >= 0 的数，彻底锁死 C++ 的随机性；传入 -1，底层就会根据系统毫秒时间完全随机
     batch_size=1024,
@@ -121,6 +122,7 @@ def apply_run_seed(seed):
         'use_transformer_actor': enterprise_ddpg_config.USE_TRANSFORMER_ACTOR,
         'max_hist_len': enterprise_ddpg_config.MAX_HIST_LEN,
         'var_end_at': enterprise_ddpg_config.VAR_END_AT,
+        'learning_rate_critic_transformer': enterprise_ddpg_config.LEARNING_RATE_CRITIC_TRANSFORMER,
     })
 
 bank_config = Bank_config(

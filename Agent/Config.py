@@ -7,6 +7,7 @@ class Config:
     def __init__(self, scope: str, action_dim: int, action_bound: float, state_dim: int = 0, reward_gamma: int = 0.95,
                  memory_capacity: int = 80000,
                  learning_rate_actor: float = 3e-4, learning_rate_critic: float = 3e-4,
+                 learning_rate_critic_transformer: float = None,
                  learning_rate_actor_stable: float = 0.00001, learning_rate_critic_stable: float = 0.00002,
                  learning_rate_decay: float = 0.98, learning_rate_decay_time: int = 200,
                  soft_replace_tau: float = 0.01, batch_size: int = 30000, var_init: float = 0.5,
@@ -33,6 +34,9 @@ class Config:
         self.MEMORY_CAPACITY = memory_capacity
         self.LEARNING_RATE_ACTOR = learning_rate_actor
         self.LEARNING_RATE_CRITIC = learning_rate_critic
+        self.LEARNING_RATE_CRITIC_TRANSFORMER = (
+            learning_rate_critic if learning_rate_critic_transformer is None else learning_rate_critic_transformer
+        )
         self.LEARNING_RATE_ACTOR_STABLE = learning_rate_actor_stable
         self.LEARNING_RATE_CRITIC_STABLE = learning_rate_critic_stable
         self.LEARNING_RATE_DECAY = learning_rate_decay

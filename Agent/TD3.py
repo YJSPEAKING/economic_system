@@ -161,6 +161,17 @@ class Critic(nn.Module):
         self.hl5 = nn.Linear(128, 32)
         self.hl6 = nn.Linear(32, 1)
 
+    def history_encoder_parameters(self):
+        params = [self.hist_pos_embed]
+        params.extend(self.hist_input.parameters())
+        params.extend(self.hist_encoder.parameters())
+        params.extend(self.hist_norm.parameters())
+        return params
+
+    def q_head_parameters(self):
+        history_param_ids = {id(param) for param in self.history_encoder_parameters()}
+        return [param for param in self.parameters() if id(param) not in history_param_ids]
+
     def _history_feature(self, hist_state, hist_action):
         hist_state = torch.as_tensor(hist_state, dtype=torch.float32, device=device)
         hist_action = torch.as_tensor(hist_action, dtype=torch.float32, device=device)
@@ -246,6 +257,7 @@ class TD3(object):
         # ==========================================
         self.LR_A = config.LEARNING_RATE_ACTOR
         self.LR_C = config.LEARNING_RATE_CRITIC
+        self.LR_C_TRANSFORMER = getattr(config, 'LEARNING_RATE_CRITIC_TRANSFORMER', self.LR_C)
         self.LR_A_STABLE = config.LEARNING_RATE_ACTOR_STABLE
         self.LR_C_STABLE = config.LEARNING_RATE_CRITIC_STABLE
         self.LR_DECAY = config.LEARNING_RATE_DECAY
@@ -316,6 +328,7 @@ class TD3(object):
         self.var = self.var_init
         self.lr_a = self.LR_A
         self.lr_c = self.LR_C
+        self.lr_c_transformer = self.LR_C_TRANSFORMER
 
         # init Actor and Critic network(eval,target)
         self.actor = Actor(
@@ -335,13 +348,33 @@ class TD3(object):
             use_history=self.use_transformer_critic
         ).to(device)
         self.critic_target = copy.deepcopy(self.critic)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.lr_c)
+        self.critic_optimizer = self._build_critic_optimizer()
+        if self.scope == 'production1':
+            print(
+                f"[Critic LR] q_head={self.lr_c}, transformer={self.lr_c_transformer}"
+            )
         # hard_update
         for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
             target_param.data.copy_(param.data)
             # Actor
         for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
             target_param.data.copy_(param.data)
+
+    def _build_critic_optimizer(self):
+        if not self.use_transformer_critic:
+            return torch.optim.Adam(self.critic.parameters(), lr=self.lr_c)
+
+        history_params = list(self.critic.history_encoder_parameters())
+        history_param_ids = {id(param) for param in history_params}
+        q_head_params = [
+            param for param in self.critic.parameters()
+            if id(param) not in history_param_ids
+        ]
+
+        return torch.optim.Adam([
+            {'params': q_head_params, 'lr': self.lr_c},
+            {'params': history_params, 'lr': self.lr_c_transformer},
+        ])
 
     def _actor_history_tensor(self, temp, state):
         if not self.use_transformer_actor:
