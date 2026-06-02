@@ -1,0 +1,9 @@
+[2026-06-02 16:10:56] loaded_profiles=35 source_meta_files=13
+[2026-06-02 16:10:56] participant_id=codex_humanlike1700_20260602_161056
+[2026-06-02 16:10:56] session_id=1c9ac797376046a0899f8d047dfe5780
+[2026-06-02 16:10:56] expert_output=D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\human_collect_web_data\codex_humanlike1700_20260602_161056_20260602_161056_1c9ac797_expert.csv
+[2026-06-02 16:10:56] meta_output=D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\human_collect_web_data\codex_humanlike1700_20260602_161056_20260602_161056_1c9ac797_meta.csv
+[2026-06-02 16:10:56] summary_output=D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\human_collect_web_data\codex_humanlike1700_20260602_161056_20260602_161056_1c9ac797_summary.csv
+[2026-06-02 16:10:59] episode=1 survival=99 success=True successes=1 rows=98 elapsed_min=0.04 profile=codex_humanlike_20260602_153220_20260602_153220_23e691fc_meta.csv:('codex_humanlike_20260602_153220', '2') last_values=[0.0, 9.1081, 9.0845, 86.589]
+[2026-06-02 16:10:59] ended_stats={"elapsed_seconds": 2.705, "submitted": 98, "avg_seconds": 0.02, "throughput_per_minute": 2173.859}
+[2026-06-02 16:10:59] completed successes=1 attempts=1
