@@ -30,11 +30,17 @@ swanlab_config = {
         'target_q_clip': 100.0,
         'critic_loss_type': 'huber',
         'critic_huber_beta': 10.0,
+        'actor_q_clip': 100.0,
+        'critic_output_bound': 100.0,
+        'critic_output_reg_weight': 1e-3,
         'reward_profit_scale': 100.0,
         'reward_exposure_scale': 1000.0,
         'reward_profit_weight': 1.0,
         'reward_fill_weight': 0.2,
         'reward_exposure_weight': 0.03,
+        'reward_alive_weight': 0.1,
+        'reward_liquidity_weight': 0.05,
+        'reward_liquidity_scale': 1000.0,
         'reward_clip': 5.0,
         'fail_reward': -4.0
     },
@@ -63,7 +69,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="online GAIL+TD3 v1.17, random online discriminator, bank target-Q clamp and Huber critic",
+                         notes="online GAIL+TD3 v1.18, bank Q-output regularization and survival-aware bank reward",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了

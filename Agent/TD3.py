@@ -119,6 +119,9 @@ class TD3(object):
         self.target_q_clip = float(getattr(config, 'TARGET_Q_CLIP', 0.0))
         self.critic_loss_type = str(getattr(config, 'CRITIC_LOSS_TYPE', 'mse')).lower()
         self.critic_huber_beta = max(float(getattr(config, 'CRITIC_HUBER_BETA', 1.0)), 1e-6)
+        self.actor_q_clip = float(getattr(config, 'ACTOR_Q_CLIP', 0.0))
+        self.critic_output_bound = float(getattr(config, 'CRITIC_OUTPUT_BOUND', 0.0))
+        self.critic_output_reg_weight = float(getattr(config, 'CRITIC_OUTPUT_REG_WEIGHT', 0.0))
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
         # self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.a_dim))
@@ -258,7 +261,18 @@ class TD3(object):
         else:
             loss_Q1 = F.mse_loss(current_Q1, target_Q)
             loss_Q2 = F.mse_loss(current_Q2, target_Q)
-        return loss_Q1 + loss_Q2
+        loss = loss_Q1 + loss_Q2
+        if self.critic_output_reg_weight > 0:
+            q_bound = self.critic_output_bound
+            if q_bound <= 0:
+                q_bound = self.target_q_clip
+            if q_bound > 0:
+                excess_Q1 = torch.relu(torch.abs(current_Q1) - q_bound)
+                excess_Q2 = torch.relu(torch.abs(current_Q2) - q_bound)
+                loss = loss + self.critic_output_reg_weight * (
+                    excess_Q1.pow(2).mean() + excess_Q2.pow(2).mean()
+                )
+        return loss
 
     def learn(self):
 
@@ -397,7 +411,10 @@ class TD3(object):
                 # 🚀 纯粹的 Actor 更新 (Pure Actor)
                 # Actor 绝不接触专家数据，仅通过最大化 Critic 的 Q 值来进化！
                 # ==========================================
-                self.actor_loss = -self.critic.Q1(b_s_tensor, self.actor(b_s_tensor)).mean()
+                actor_Q = self.critic.Q1(b_s_tensor, self.actor(b_s_tensor))
+                if self.actor_q_clip > 0:
+                    actor_Q = torch.clamp(actor_Q, -self.actor_q_clip, self.actor_q_clip)
+                self.actor_loss = -actor_Q.mean()
 
                 self.actor_optimizer.zero_grad()
                 self.actor_loss.backward()

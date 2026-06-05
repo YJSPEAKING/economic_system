@@ -165,16 +165,30 @@ class Bank:
     def custom_reward(self):
         profit_scale = max(float(getattr(self.config, 'reward_profit_scale', 100.0)), 1e-6)
         exposure_scale = max(float(getattr(self.config, 'reward_exposure_scale', 1000.0)), 1e-6)
+        liquidity_scale = max(float(getattr(self.config, 'reward_liquidity_scale', 1000.0)), 1e-6)
 
         desired_loan = sum(abs(self._as_float(v)) for v in self.WNDB.values())
         executed_loan = sum(abs(self._as_float(v)) for v in self.real_WNDB.values())
         fill_rate = executed_loan / (desired_loan + 1e-6) if desired_loan > 1e-6 else 0.0
         exposure = sum(max(self._as_float(v), 0.0) for v in self.bond.values()) / exposure_scale
+        alive_ratio = 0.0
+        liquidity_gap = 0.0
+        if len(self.observation) > 0:
+            alive_count = 0
+            for target in self.observation.values():
+                if not target.is_falled():
+                    alive_count += 1
+                due = self._as_float(target.should_payback) + self._as_float(target.iDebt)
+                liquidity_gap += max(due - self._as_float(target.money), 0.0)
+            alive_ratio = alive_count / len(self.observation)
+            liquidity_gap = liquidity_gap / (len(self.observation) * liquidity_scale)
 
         reward = (
             float(getattr(self.config, 'reward_profit_weight', 1.0)) * (self.profit / profit_scale)
             + float(getattr(self.config, 'reward_fill_weight', 0.2)) * fill_rate
             - float(getattr(self.config, 'reward_exposure_weight', 0.03)) * exposure
+            + float(getattr(self.config, 'reward_alive_weight', 0.1)) * alive_ratio
+            - float(getattr(self.config, 'reward_liquidity_weight', 0.05)) * liquidity_gap
         )
         self.reward['WNDB'] = self._clip_reward(reward)
 

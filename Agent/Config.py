@@ -21,6 +21,8 @@ class Config:
                  critic_grad_clip: float = 0.0,
                  actor_grad_clip: float = 0.0, target_q_clip: float = 0.0,
                  critic_loss_type: str = 'mse', critic_huber_beta: float = 1.0,
+                 actor_q_clip: float = 0.0, critic_output_bound: float = 0.0,
+                 critic_output_reg_weight: float = 0.0,
                  reward_space: int = 1, ra_obs_space: int = 0, beta=0.2, ra_bound: float = 1.0, lra_ra=3e-4,
                  lrc_ra=3e-4, lr_alpha_ra=1e-4,
                  ra_alpha_autotune=True, ra_alpha=0.2, ra_batch_size=256, ra_policy_frequency=2, ra_target_frequency=1,
@@ -65,6 +67,9 @@ class Config:
         self.TARGET_Q_CLIP = target_q_clip
         self.CRITIC_LOSS_TYPE = critic_loss_type
         self.CRITIC_HUBER_BETA = critic_huber_beta
+        self.ACTOR_Q_CLIP = actor_q_clip
+        self.CRITIC_OUTPUT_BOUND = critic_output_bound
+        self.CRITIC_OUTPUT_REG_WEIGHT = critic_output_reg_weight
         if random_seed is None:
             self.random_seed = random.randint(1, 1000)
         else:
