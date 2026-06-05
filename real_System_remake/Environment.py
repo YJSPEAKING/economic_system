@@ -20,11 +20,23 @@ enterprise_price = 8  # 企业的初始价格是8
 
 swanlab_config = {
     'bank_ddpg_config': {
-        'learning_rate_actor': 1e-3,
-        'learning_rate_critic': 2e-3,
+        'learning_rate_actor': 3e-4,
+        'learning_rate_critic': 5e-4,
         'learning_rate_decay': 1,
         'random_seed': 184,
-        'memory_capacity': 200000
+        'memory_capacity': 200000,
+        'critic_grad_clip': 1.0,
+        'actor_grad_clip': 1.0,
+        'target_q_clip': 100.0,
+        'critic_loss_type': 'huber',
+        'critic_huber_beta': 10.0,
+        'reward_profit_scale': 100.0,
+        'reward_exposure_scale': 1000.0,
+        'reward_profit_weight': 1.0,
+        'reward_fill_weight': 0.2,
+        'reward_exposure_weight': 0.03,
+        'reward_clip': 5.0,
+        'fail_reward': -4.0
     },
     'enterprise_ddpg_config': {
         'smooth_noise': 0.01,
@@ -51,7 +63,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="在线GAIL+强化学习v1.12，gail_reward_weight = 2.0",
+                         notes="online GAIL+TD3 v1.17, random online discriminator, bank target-Q clamp and Huber critic",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了

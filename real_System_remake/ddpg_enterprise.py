@@ -26,7 +26,6 @@ import os
 from new_calculate import *
 # from Agent.DDPG import DDPG
 from Agent.TD3 import TD3
-from real_System_remake.pretrain_real_gail import RealActor, normalize, RunningMeanStd
 
 # from Agent.TD3_attention import TD3 as TD3_attn  # 如果要使用其他的算法，在import中改掉即可
 # from Agent.TD3withoutNoise import TD3
@@ -86,32 +85,28 @@ class enterprise_nnu:
             # 保留这句提示，代表它是随机初始化的
             print(f"🌱 TD3 Actor 将从零开始与环境及判别器进行对抗训练")
 
-            # 2. 读取静态标准化参数 (保持原样)
-            rms_path = os.path.join(current_dir, 'obs_rms_params.pth')
-            rms_params = torch.load(rms_path, map_location=self.device)
-            self.obs_mean = rms_params['mean'].to(self.device)
-            self.obs_var = rms_params['var'].to(self.device)
-            self.act_mean = rms_params['act_mean'].to(self.device)
-            self.act_var = rms_params['act_var'].to(self.device)
-
-            # 3. 【阶段一：加载】建立在线专家记忆库 (Expert Buffer)
-            csv_path = os.path.join(current_dir, 'expert_data_production1_cleaned.csv')
+            # Load expert data for online GAIL.
+            csv_path = os.path.join(current_dir, 'expert_data_production1_collected.csv')
             if os.path.exists(csv_path):
                 df = pd.read_csv(csv_path, header=None)
-                expert_data = torch.FloatTensor(df.values).to(self.device)
+                expert_data = torch.as_tensor(df.values, dtype=torch.float32, device=self.device)
                 # 切分状态与动作 (前33是状态，后4是动作)
                 self.expert_states = expert_data[:, :33]
                 self.expert_actions = expert_data[:, 33:37]
                 self.expert_size = len(self.expert_states)
-                print(f"✅ 专家记忆库已挂载！共包含 {self.expert_size} 条记录。")
+                print(f"Loaded expert replay buffer from CSV: {self.expert_size} rows.")
             else:
                 raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
 
-            # 4. 【阶段二：唤醒】加载判别器并解冻
+            # Compute normalization stats from expert CSV, then create a fresh discriminator.
+            self.obs_mean = self.expert_states.mean(dim=0)
+            self.obs_var = torch.clamp(self.expert_states.var(dim=0, unbiased=False), min=1e-6)
+            self.act_mean = self.expert_actions.mean(dim=0)
+            self.act_var = torch.clamp(self.expert_actions.var(dim=0, unbiased=False), min=1e-6)
+            print("Online GAIL normalization stats are computed from expert CSV.")
+
             self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4).to(self.device)
-            disc_path = os.path.join(current_dir, 'pretrained_discriminator.pth')
-            if os.path.exists(disc_path):
-                self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device))
+            print("GAIL discriminator is randomly initialized and trained online.")
 
             # 【核心改变】：解冻判别器，开启训练模式
             self.gail_disc.train()

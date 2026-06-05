@@ -152,12 +152,31 @@ class Bank:
     def get_state(self):
         return self.state
 
+    def _clip_reward(self, value):
+        clip = max(float(getattr(self.config, 'reward_clip', 5.0)), 1e-6)
+        return max(-clip, min(clip, float(value)))
+
+    def _as_float(self, value):
+        try:
+            return float(value)
+        except TypeError:
+            return float(value[0])
 
     def custom_reward(self):
-        '''
-        self.reward['WNDB'] = self.profit/1
-        '''
-        self.reward['WNDB'] = self.profit/100
+        profit_scale = max(float(getattr(self.config, 'reward_profit_scale', 100.0)), 1e-6)
+        exposure_scale = max(float(getattr(self.config, 'reward_exposure_scale', 1000.0)), 1e-6)
+
+        desired_loan = sum(abs(self._as_float(v)) for v in self.WNDB.values())
+        executed_loan = sum(abs(self._as_float(v)) for v in self.real_WNDB.values())
+        fill_rate = executed_loan / (desired_loan + 1e-6) if desired_loan > 1e-6 else 0.0
+        exposure = sum(max(self._as_float(v), 0.0) for v in self.bond.values()) / exposure_scale
+
+        reward = (
+            float(getattr(self.config, 'reward_profit_weight', 1.0)) * (self.profit / profit_scale)
+            + float(getattr(self.config, 'reward_fill_weight', 0.2)) * fill_rate
+            - float(getattr(self.config, 'reward_exposure_weight', 0.03)) * exposure
+        )
+        self.reward['WNDB'] = self._clip_reward(reward)
 
 
     def get_reward(self):
@@ -170,10 +189,16 @@ class Bank:
     def get_fail_reward(self):
         fail_reward = {'WNDB':0}
         decay = self.reward_decay ** self.step
-        # for key in self.observation:
-        #     if self.observation[key].is_falled():
-        #         fail_reward['WNDB'] -= self.bond[key]
-        fail_reward['WNDB'] = -10
+        default_fail_reward = float(getattr(self.config, 'fail_reward', -4.0))
+        exposure_scale = max(float(getattr(self.config, 'reward_exposure_scale', 1000.0)), 1e-6)
+        failed_exposure = 0.0
+        for key in self.observation:
+            if self.observation[key].is_falled():
+                failed_exposure += max(self._as_float(self.bond[key]), 0.0)
+        fail_reward['WNDB'] = self._clip_reward(
+            default_fail_reward
+            - float(getattr(self.config, 'reward_exposure_weight', 0.03)) * failed_exposure / exposure_scale
+        )
         self.total_reward['WNDB'] += fail_reward['WNDB'] * decay
         return fail_reward
 

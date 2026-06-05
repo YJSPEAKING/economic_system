@@ -86,13 +86,18 @@ bank_ddpg_config = Config(
     var_drop_at=1024,
     var_stable_at=stable_at,
     var_end_at=end_at,
-    learning_rate_actor=1e-3,
-    learning_rate_critic=2e-3,
+    learning_rate_actor=3e-4,
+    learning_rate_critic=5e-4,
     learning_rate_decay=1,
     random_seed=184,
     batch_size=1024,
     memory_capacity=200000,
     learn_start_steps=1024,
+    critic_grad_clip=1.0,
+    actor_grad_clip=1.0,
+    target_q_clip=100.0,
+    critic_loss_type='huber',
+    critic_huber_beta=10.0,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -119,7 +124,14 @@ bank_config = Bank_config(
     fund=2000,
     fund_rate=1,
     fund_increase=0.1,
-    debt_time=5
+    debt_time=5,
+    reward_profit_scale=100.0,
+    reward_exposure_scale=1000.0,
+    reward_profit_weight=1.0,
+    reward_fill_weight=0.2,
+    reward_exposure_weight=0.03,
+    reward_clip=5.0,
+    fail_reward=-4.0
 )
 
 enterprise_config = Enterprise_config(
@@ -290,7 +302,8 @@ class System:
 
 
 if __name__ == '__main__':
-    seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
+    # seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
+    seeds_to_run = [184, 291, 83, 739]
     for seed in seeds_to_run:
         system = System(seed=seed)
         system.run()

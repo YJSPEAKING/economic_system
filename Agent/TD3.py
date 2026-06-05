@@ -114,6 +114,11 @@ class TD3(object):
         self.gail_reward_weight = getattr(config, 'GAIL_REWARD_WEIGHT', 2.0)
         self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
         self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
+        self.critic_grad_clip = float(getattr(config, 'CRITIC_GRAD_CLIP', 0.0))
+        self.actor_grad_clip = float(getattr(config, 'ACTOR_GRAD_CLIP', 0.0))
+        self.target_q_clip = float(getattr(config, 'TARGET_Q_CLIP', 0.0))
+        self.critic_loss_type = str(getattr(config, 'CRITIC_LOSS_TYPE', 'mse')).lower()
+        self.critic_huber_beta = max(float(getattr(config, 'CRITIC_HUBER_BETA', 1.0)), 1e-6)
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
         # self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.a_dim))
@@ -246,6 +251,15 @@ class TD3(object):
         not_done[zero_next_state] = 0.0
         return not_done
 
+    def _critic_loss_fn(self, current_Q1, current_Q2, target_Q):
+        if self.critic_loss_type in ('huber', 'smooth_l1', 'smoothl1'):
+            loss_Q1 = F.smooth_l1_loss(current_Q1, target_Q, beta=self.critic_huber_beta)
+            loss_Q2 = F.smooth_l1_loss(current_Q2, target_Q, beta=self.critic_huber_beta)
+        else:
+            loss_Q1 = F.mse_loss(current_Q1, target_Q)
+            loss_Q2 = F.mse_loss(current_Q2, target_Q)
+        return loss_Q1 + loss_Q2
+
     def learn(self):
 
         if self.pointer < self.learn_start_steps:
@@ -362,15 +376,19 @@ class TD3(object):
 
                 # 🎯 使用融合了【实时判别器打分】和【真实环境利润】的混合奖励去更新 Critic！
                 target_Q = b_r_tensor_fused + self.GAMMA * b_not_done_tensor * target_Q
+                if self.target_q_clip > 0:
+                    target_Q = torch.clamp(target_Q, -self.target_q_clip, self.target_q_clip)
 
             # 获得当前 batch 的 Q estimates
             current_Q1, current_Q2 = self.critic(b_s_tensor, b_a_tensor)
             # 计算 critic loss = td - error
-            self.critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+            self.critic_loss = self._critic_loss_fn(current_Q1, current_Q2, target_Q)
 
             # Optimize the critic
             self.critic_optimizer.zero_grad()
             self.critic_loss.backward()
+            if self.critic_grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.critic_grad_clip)
             self.critic_optimizer.step()
 
             # 延迟策略更新
@@ -383,6 +401,8 @@ class TD3(object):
 
                 self.actor_optimizer.zero_grad()
                 self.actor_loss.backward()
+                if self.actor_grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_grad_clip)
                 self.actor_optimizer.step()
 
                 # soft update
@@ -417,11 +437,13 @@ class TD3(object):
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q * self.discount
                 #3.24
                 target_Q = torch.as_tensor(b_r, dtype=torch.float32, device=device) + self.GAMMA * b_not_done_tensor * target_Q
+                if self.target_q_clip > 0:
+                    target_Q = torch.clamp(target_Q, -self.target_q_clip, self.target_q_clip)
                 # target_Q = torch.tensor(b_r) + self.GAMMA * target_Q
             # 获得当前batch Q estimates
             current_Q1,current_Q2 = self.critic(b_s,b_a)
             # 计算critic loss = td - error
-            self.critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+            self.critic_loss = self._critic_loss_fn(current_Q1, current_Q2, target_Q)
         return self.critic_loss
 
         # 将经验存储到缓冲池（memory）中

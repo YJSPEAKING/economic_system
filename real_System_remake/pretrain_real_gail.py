@@ -90,7 +90,7 @@ def pretrain_gail():
     print(f"=== 🚀 启动真实环境脱机 GAIL 预训练 (设备: {device}) ===")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.join(current_dir, 'expert_data_production1_cleaned.csv')
+    csv_path = os.path.join(current_dir, 'expert_data_production1_collected.csv')
 
     if not os.path.exists(csv_path):
         print(f"❌ 找不到文件: {csv_path}")
