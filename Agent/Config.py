@@ -17,6 +17,7 @@ class Config:
                  is_critic_double_network: bool = True, is_actor_update_delay: bool = True,
                  is_QNet_smooth_critic: bool = True, is_lstm: bool = True,
                  policy_noise: float = 0.2, discount: float = 0.99, max_hist_len=8, batch_lstm=256, update_every=50,
+                 transformer_nhead: int = 4, transformer_hist_hidden: int = 64,
                  learn_start_steps: int = 1024, gail_reward_weight: float = 2.0,
                  gail_warmup_steps: int = 5000, disc_update_ratio: int = 1,
                  use_transformer_critic: bool = False,
@@ -55,6 +56,8 @@ class Config:
         self.IS_QNET_SMOOTH_CRITIC = is_QNet_smooth_critic
         self.IS_LSTM = is_lstm
         self.MAX_HIST_LEN = max_hist_len
+        self.TRANSFORMER_NHEAD = transformer_nhead
+        self.TRANSFORMER_HIST_HIDDEN = transformer_hist_hidden
         self.BATCH_SIZE_LSTM = batch_lstm
         self.POLICY_NOISE = policy_noise
         self.DISCOUNT = discount

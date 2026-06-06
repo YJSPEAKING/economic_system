@@ -270,6 +270,8 @@ class TD3(object):
         self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
         self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
         self.max_hist_len = max(1, int(getattr(config, 'MAX_HIST_LEN', 1)))
+        self.transformer_nhead = max(1, int(getattr(config, 'TRANSFORMER_NHEAD', 4)))
+        self.transformer_hist_hidden = max(1, int(getattr(config, 'TRANSFORMER_HIST_HIDDEN', 64)))
         self.use_transformer_critic = (
             bool(getattr(config, 'USE_TRANSFORMER_CRITIC', False))
             and self.max_hist_len > 1
@@ -284,7 +286,8 @@ class TD3(object):
         if self.scope == 'production1':
             print(
                 f"[Transformer] D=True, Critic={self.use_transformer_critic}, "
-                f"Actor={self.use_transformer_actor}, hist_len={self.max_hist_len}"
+                f"Actor={self.use_transformer_actor}, hist_len={self.max_hist_len}, "
+                f"nhead={self.transformer_nhead}, hist_hidden={self.transformer_hist_hidden}"
             )
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
@@ -336,7 +339,9 @@ class TD3(object):
             self.a_dim,
             self.a_bound,
             max_seq_len=self.max_hist_len,
-            use_history=self.use_transformer_actor
+            use_history=self.use_transformer_actor,
+            hist_hidden=self.transformer_hist_hidden,
+            nhead=self.transformer_nhead
         ).to(device)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a)
@@ -345,7 +350,9 @@ class TD3(object):
             self.s_dim,
             self.a_dim,
             max_seq_len=self.max_hist_len,
-            use_history=self.use_transformer_critic
+            use_history=self.use_transformer_critic,
+            hist_hidden=self.transformer_hist_hidden,
+            nhead=self.transformer_nhead
         ).to(device)
         self.critic_target = copy.deepcopy(self.critic)
         self.critic_optimizer = self._build_critic_optimizer()

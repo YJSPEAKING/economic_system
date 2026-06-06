@@ -137,7 +137,12 @@ class enterprise_nnu:
                 raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
 
             # 4. 【阶段二：唤醒】加载判别器并解冻
-            self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4, max_seq_len=getattr(config, 'MAX_HIST_LEN', 6)).to(self.device)
+            self.gail_disc = RealDiscriminator(
+                s_dim=33,
+                a_dim=4,
+                max_seq_len=getattr(config, 'MAX_HIST_LEN', 6),
+                nhead=getattr(config, 'TRANSFORMER_NHEAD', 4)
+            ).to(self.device)
             disc_path = os.path.join(current_dir, 'pretrained_discriminator.pth')
             if os.path.exists(disc_path):
                 self.gail_disc.load_state_dict(torch.load(disc_path, map_location=self.device), strict=False)
