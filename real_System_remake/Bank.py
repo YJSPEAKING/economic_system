@@ -162,10 +162,14 @@ class Bank:
         except TypeError:
             return float(value[0])
 
-    def custom_reward(self):
+    def custom_reward(self, day=None):
         profit_scale = max(float(getattr(self.config, 'reward_profit_scale', 100.0)), 1e-6)
         exposure_scale = max(float(getattr(self.config, 'reward_exposure_scale', 1000.0)), 1e-6)
         liquidity_scale = max(float(getattr(self.config, 'reward_liquidity_scale', 1000.0)), 1e-6)
+        survival_scale = max(float(getattr(self.config, 'reward_survival_scale', 100.0)), 1e-6)
+        survival_power = max(float(getattr(self.config, 'reward_survival_power', 2.0)), 1e-6)
+        milestone_day = float(getattr(self.config, 'reward_survival_milestone_day', 80.0))
+        current_day = self.step if day is None else max(float(day), 0.0)
 
         desired_loan = sum(abs(self._as_float(v)) for v in self.WNDB.values())
         executed_loan = sum(abs(self._as_float(v)) for v in self.real_WNDB.values())
@@ -173,22 +177,41 @@ class Bank:
         exposure = sum(max(self._as_float(v), 0.0) for v in self.bond.values()) / exposure_scale
         alive_ratio = 0.0
         liquidity_gap = 0.0
+        due_shortage_ratio = 0.0
         if len(self.observation) > 0:
             alive_count = 0
+            due_count = 0
+            shortage_cap = max(float(getattr(self.config, 'reward_due_shortage_cap', 2.0)), 1e-6)
             for target in self.observation.values():
                 if not target.is_falled():
                     alive_count += 1
                 due = self._as_float(target.should_payback) + self._as_float(target.iDebt)
-                liquidity_gap += max(due - self._as_float(target.money), 0.0)
+                shortage = max(due - self._as_float(target.money), 0.0)
+                liquidity_gap += shortage
+                if due > 1e-6:
+                    due_shortage_ratio += min(shortage / (abs(due) + 1e-6), shortage_cap)
+                    due_count += 1
             alive_ratio = alive_count / len(self.observation)
             liquidity_gap = liquidity_gap / (len(self.observation) * liquidity_scale)
+            if due_count > 0:
+                due_shortage_ratio = due_shortage_ratio / due_count
+
+        survival_progress = min(max(current_day / survival_scale, 0.0), 1.0)
+        survival_bonus = (survival_progress ** survival_power) * alive_ratio
+        milestone_progress = 0.0
+        if survival_scale > milestone_day:
+            milestone_progress = min(max((current_day - milestone_day) / (survival_scale - milestone_day), 0.0), 1.0)
+        milestone_bonus = milestone_progress * alive_ratio
 
         reward = (
             float(getattr(self.config, 'reward_profit_weight', 1.0)) * (self.profit / profit_scale)
             + float(getattr(self.config, 'reward_fill_weight', 0.2)) * fill_rate
             - float(getattr(self.config, 'reward_exposure_weight', 0.03)) * exposure
-            + float(getattr(self.config, 'reward_alive_weight', 0.1)) * alive_ratio
-            - float(getattr(self.config, 'reward_liquidity_weight', 0.05)) * liquidity_gap
+            + float(getattr(self.config, 'reward_alive_weight', 0.15)) * alive_ratio
+            + float(getattr(self.config, 'reward_survival_weight', 0.4)) * survival_bonus
+            + float(getattr(self.config, 'reward_survival_milestone_weight', 0.4)) * milestone_bonus
+            - float(getattr(self.config, 'reward_liquidity_weight', 0.15)) * liquidity_gap
+            - float(getattr(self.config, 'reward_due_shortage_weight', 0.6)) * due_shortage_ratio
         )
         self.reward['WNDB'] = self._clip_reward(reward)
 
@@ -203,7 +226,7 @@ class Bank:
     def get_fail_reward(self):
         fail_reward = {'WNDB':0}
         decay = self.reward_decay ** self.step
-        default_fail_reward = float(getattr(self.config, 'fail_reward', -4.0))
+        default_fail_reward = float(getattr(self.config, 'fail_reward', -5.0))
         exposure_scale = max(float(getattr(self.config, 'reward_exposure_scale', 1000.0)), 1e-6)
         failed_exposure = 0.0
         for key in self.observation:

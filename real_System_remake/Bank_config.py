@@ -18,11 +18,18 @@ class Bank_config:
                  reward_profit_weight: float = 1.0,
                  reward_fill_weight: float = 0.2,
                  reward_exposure_weight: float = 0.03,
-                 reward_alive_weight: float = 0.1,
-                 reward_liquidity_weight: float = 0.05,
+                 reward_alive_weight: float = 0.15,
+                 reward_survival_weight: float = 0.4,
+                 reward_survival_scale: float = 100.0,
+                 reward_survival_power: float = 2.0,
+                 reward_survival_milestone_weight: float = 0.4,
+                 reward_survival_milestone_day: float = 80.0,
+                 reward_liquidity_weight: float = 0.15,
                  reward_liquidity_scale: float = 1000.0,
+                 reward_due_shortage_weight: float = 0.6,
+                 reward_due_shortage_cap: float = 2.0,
                  reward_clip: float = 5.0,
-                 fail_reward: float = -4.0,
+                 fail_reward: float = -5.0,
                  action_function: dict = None,  # 类型为字典 str:function()，决定设置各变量的方法
                  ):
         self.name = name
@@ -37,8 +44,15 @@ class Bank_config:
         self.reward_fill_weight = reward_fill_weight
         self.reward_exposure_weight = reward_exposure_weight
         self.reward_alive_weight = reward_alive_weight
+        self.reward_survival_weight = reward_survival_weight
+        self.reward_survival_scale = reward_survival_scale
+        self.reward_survival_power = reward_survival_power
+        self.reward_survival_milestone_weight = reward_survival_milestone_weight
+        self.reward_survival_milestone_day = reward_survival_milestone_day
         self.reward_liquidity_weight = reward_liquidity_weight
         self.reward_liquidity_scale = reward_liquidity_scale
+        self.reward_due_shortage_weight = reward_due_shortage_weight
+        self.reward_due_shortage_cap = reward_due_shortage_cap
         self.reward_clip = reward_clip
         self.fail_reward = fail_reward
         self.action_function = action_function

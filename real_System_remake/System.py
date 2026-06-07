@@ -133,11 +133,18 @@ bank_config = Bank_config(
     reward_profit_weight=1.0,
     reward_fill_weight=0.2,
     reward_exposure_weight=0.03,
-    reward_alive_weight=0.1,
-    reward_liquidity_weight=0.05,
+    reward_alive_weight=0.15,
+    reward_survival_weight=0.4,
+    reward_survival_scale=100.0,
+    reward_survival_power=2.0,
+    reward_survival_milestone_weight=0.4,
+    reward_survival_milestone_day=80.0,
+    reward_liquidity_weight=0.15,
     reward_liquidity_scale=1000.0,
+    reward_due_shortage_weight=0.6,
+    reward_due_shortage_cap=2.0,
     reward_clip=5.0,
-    fail_reward=-4.0
+    fail_reward=-5.0
 )
 
 enterprise_config = Enterprise_config(
