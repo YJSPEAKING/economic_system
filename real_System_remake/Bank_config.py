@@ -18,18 +18,22 @@ class Bank_config:
                  reward_profit_weight: float = 1.0,
                  reward_fill_weight: float = 0.2,
                  reward_exposure_weight: float = 0.03,
-                 reward_alive_weight: float = 0.15,
-                 reward_survival_weight: float = 0.4,
+                 reward_alive_weight: float = 0.05,
+                 reward_survival_weight: float = 0.15,
                  reward_survival_scale: float = 100.0,
                  reward_survival_power: float = 2.0,
-                 reward_survival_milestone_weight: float = 0.4,
+                 reward_survival_milestone_weight: float = 0.15,
                  reward_survival_milestone_day: float = 80.0,
-                 reward_liquidity_weight: float = 0.15,
+                 reward_liquidity_weight: float = 0.1,
                  reward_liquidity_scale: float = 1000.0,
-                 reward_due_shortage_weight: float = 0.6,
-                 reward_due_shortage_cap: float = 2.0,
+                 reward_due_shortage_weight: float = 0.35,
+                 reward_due_shortage_cap: float = 1.5,
                  reward_clip: float = 5.0,
-                 fail_reward: float = -5.0,
+                 fail_reward: float = -6.0,
+                 fail_reward_clip: float = 12.0,
+                 fail_survival_target_day: float = 90.0,
+                 fail_survival_shortfall_weight: float = 6.0,
+                 fail_exposure_weight: float = 0.12,
                  action_function: dict = None,  # 类型为字典 str:function()，决定设置各变量的方法
                  ):
         self.name = name
@@ -55,6 +59,10 @@ class Bank_config:
         self.reward_due_shortage_cap = reward_due_shortage_cap
         self.reward_clip = reward_clip
         self.fail_reward = fail_reward
+        self.fail_reward_clip = fail_reward_clip
+        self.fail_survival_target_day = fail_survival_target_day
+        self.fail_survival_shortfall_weight = fail_survival_shortfall_weight
+        self.fail_exposure_weight = fail_exposure_weight
         self.action_function = action_function
         if self.action_function is None:
             self.action_function = {

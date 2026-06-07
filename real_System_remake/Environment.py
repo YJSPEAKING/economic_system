@@ -38,18 +38,22 @@ swanlab_config = {
         'reward_profit_weight': 1.0,
         'reward_fill_weight': 0.2,
         'reward_exposure_weight': 0.03,
-        'reward_alive_weight': 0.15,
-        'reward_survival_weight': 0.4,
+        'reward_alive_weight': 0.05,
+        'reward_survival_weight': 0.15,
         'reward_survival_scale': 100.0,
         'reward_survival_power': 2.0,
-        'reward_survival_milestone_weight': 0.4,
+        'reward_survival_milestone_weight': 0.15,
         'reward_survival_milestone_day': 80.0,
-        'reward_liquidity_weight': 0.15,
+        'reward_liquidity_weight': 0.1,
         'reward_liquidity_scale': 1000.0,
-        'reward_due_shortage_weight': 0.6,
-        'reward_due_shortage_cap': 2.0,
+        'reward_due_shortage_weight': 0.35,
+        'reward_due_shortage_cap': 1.5,
         'reward_clip': 5.0,
-        'fail_reward': -5.0
+        'fail_reward': -6.0,
+        'fail_reward_clip': 12.0,
+        'fail_survival_target_day': 90.0,
+        'fail_survival_shortfall_weight': 6.0,
+        'fail_exposure_weight': 0.12
     },
     'enterprise_ddpg_config': {
         'smooth_noise': 0.01,
@@ -76,7 +80,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="online GAIL+TD3 v1.19, stronger bank survival and liquidity-risk reward",
+                         notes="online GAIL+TD3 v1.20, smoother daily bank reward and stronger terminal survival penalty",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
@@ -413,7 +417,7 @@ class Environment:
                 reward[key] = self.Enterprise[key].get_fail_reward()
             # 银行同理
             for key in self.action_controller['b_execute']:
-                reward[key] = self.Bank[key].get_fail_reward()
+                reward[key] = self.Bank[key].get_fail_reward(self.day)
             self.reward = reward
 
         # 输出数据

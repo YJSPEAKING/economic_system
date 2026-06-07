@@ -207,11 +207,11 @@ class Bank:
             float(getattr(self.config, 'reward_profit_weight', 1.0)) * (self.profit / profit_scale)
             + float(getattr(self.config, 'reward_fill_weight', 0.2)) * fill_rate
             - float(getattr(self.config, 'reward_exposure_weight', 0.03)) * exposure
-            + float(getattr(self.config, 'reward_alive_weight', 0.15)) * alive_ratio
-            + float(getattr(self.config, 'reward_survival_weight', 0.4)) * survival_bonus
-            + float(getattr(self.config, 'reward_survival_milestone_weight', 0.4)) * milestone_bonus
-            - float(getattr(self.config, 'reward_liquidity_weight', 0.15)) * liquidity_gap
-            - float(getattr(self.config, 'reward_due_shortage_weight', 0.6)) * due_shortage_ratio
+            + float(getattr(self.config, 'reward_alive_weight', 0.05)) * alive_ratio
+            + float(getattr(self.config, 'reward_survival_weight', 0.15)) * survival_bonus
+            + float(getattr(self.config, 'reward_survival_milestone_weight', 0.15)) * milestone_bonus
+            - float(getattr(self.config, 'reward_liquidity_weight', 0.1)) * liquidity_gap
+            - float(getattr(self.config, 'reward_due_shortage_weight', 0.35)) * due_shortage_ratio
         )
         self.reward['WNDB'] = self._clip_reward(reward)
 
@@ -223,18 +223,26 @@ class Bank:
         self.step += 1
         return self.reward
 
-    def get_fail_reward(self):
+    def _clip_fail_reward(self, value):
+        clip = max(float(getattr(self.config, 'fail_reward_clip', 12.0)), 1e-6)
+        return max(-clip, min(clip, float(value)))
+
+    def get_fail_reward(self, day=None):
         fail_reward = {'WNDB':0}
         decay = self.reward_decay ** self.step
-        default_fail_reward = float(getattr(self.config, 'fail_reward', -5.0))
+        current_day = self.step if day is None else max(float(day), 0.0)
+        default_fail_reward = float(getattr(self.config, 'fail_reward', -6.0))
         exposure_scale = max(float(getattr(self.config, 'reward_exposure_scale', 1000.0)), 1e-6)
+        target_day = max(float(getattr(self.config, 'fail_survival_target_day', 90.0)), 1e-6)
+        survival_shortfall = max(target_day - current_day, 0.0) / target_day
         failed_exposure = 0.0
         for key in self.observation:
             if self.observation[key].is_falled():
                 failed_exposure += max(self._as_float(self.bond[key]), 0.0)
-        fail_reward['WNDB'] = self._clip_reward(
+        fail_reward['WNDB'] = self._clip_fail_reward(
             default_fail_reward
-            - float(getattr(self.config, 'reward_exposure_weight', 0.03)) * failed_exposure / exposure_scale
+            - float(getattr(self.config, 'fail_survival_shortfall_weight', 6.0)) * survival_shortfall
+            - float(getattr(self.config, 'fail_exposure_weight', 0.12)) * failed_exposure / exposure_scale
         )
         self.total_reward['WNDB'] += fail_reward['WNDB'] * decay
         return fail_reward
