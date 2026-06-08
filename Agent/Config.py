@@ -18,8 +18,10 @@ class Config:
                  policy_noise: float = 0.2, discount: float = 0.99, max_hist_len=8, batch_lstm=256, update_every=50,
                   learn_start_steps: int = 1024, gail_reward_weight: float = 2.0,
                   gail_warmup_steps: int = 5000, disc_update_ratio: int = 1,
+                  disc_update_every: int = 5,
                   gail_reward_clip: float = 2.0,
                   disc_learning_rate: float = 1e-4, disc_weight_decay: float = 1e-4,
+                  disc_real_label: float = 0.7, disc_fake_label: float = 0.3,
                   critic_grad_clip: float = 0.0,
                  actor_grad_clip: float = 0.0, target_q_clip: float = 0.0,
                  critic_loss_type: str = 'mse', critic_huber_beta: float = 1.0,
@@ -64,9 +66,12 @@ class Config:
         self.GAIL_REWARD_WEIGHT = gail_reward_weight
         self.GAIL_WARMUP_STEPS = gail_warmup_steps
         self.DISC_UPDATE_RATIO = disc_update_ratio
+        self.DISC_UPDATE_EVERY = disc_update_every
         self.GAIL_REWARD_CLIP = gail_reward_clip
         self.DISC_LEARNING_RATE = disc_learning_rate
         self.DISC_WEIGHT_DECAY = disc_weight_decay
+        self.DISC_REAL_LABEL = disc_real_label
+        self.DISC_FAKE_LABEL = disc_fake_label
         self.CRITIC_GRAD_CLIP = critic_grad_clip
         self.ACTOR_GRAD_CLIP = actor_grad_clip
         self.TARGET_Q_CLIP = target_q_clip

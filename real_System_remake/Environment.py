@@ -58,24 +58,30 @@ swanlab_config = {
     'enterprise_ddpg_config': {
         'smooth_noise': 0.01,
         'learning_rate_actor': 1e-3,
-        'learning_rate_critic': 2e-3,
+        'learning_rate_critic': 1e-3,
         'learning_rate_decay': 1,
         'random_seed': 184,
         'memory_capacity': 200000,
         'gail_reward_weight': 2.0,
         'gail_warmup_steps': 5000,
         'disc_update_ratio': 1,
+        'disc_update_every': 5,
         'gail_reward_clip': 2.0,
         'disc_learning_rate': 1e-4,
-        'disc_weight_decay': 1e-4
+        'disc_weight_decay': 1e-4,
+        'disc_real_label': 0.7,
+        'disc_fake_label': 0.3,
+        'critic_grad_clip': 1.0,
+        'actor_grad_clip': 1.0,
+        'target_q_clip': 500.0,
+        'critic_loss_type': 'huber',
+        'critic_huber_beta': 20.0,
+        'actor_q_clip': 500.0,
+        'critic_output_bound': 500.0,
+        'critic_output_reg_weight': 1e-4
     },
     'enterprise_reward_config': {
-        'reward_survival_weight': 0.08,
-        'reward_survival_scale': 100.0,
-        'reward_liquidity_weight': 0.25,
-        'reward_liquidity_scale': 1000.0,
-        'reward_debt_pressure_weight': 0.12,
-        'reward_debt_pressure_cap': 2.0,
+        'daily_reward_mode': 'profit_only',
         'fail_reward': -10.0,
         'fail_reward_clip': 18.0,
         'fail_survival_target_day': 90.0,
@@ -98,7 +104,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="online GAIL+TD3 v1.21, stable GAIL reward and enterprise survival shaping",
+                         notes="online GAIL+TD3 v1.22, soft discriminator labels and enterprise TD3 stability",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了

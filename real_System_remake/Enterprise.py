@@ -348,26 +348,10 @@ class Enterprise:
     # 预留字段：将一个智能体任务分成两个计算reward
     def custom_reward(self,day):
         self.reward = {}
-        economy_reward = (self.revenue - self.last_cost) / 100
-        business_reward = (self.revenue * 2 - self.last_cost + self.economy_profit) / 100
-
-        current_day = max(float(day), 0.0)
-        survival_scale = max(float(getattr(self.config, 'reward_survival_scale', 100.0)), 1e-6)
-        survival_progress = min(current_day / survival_scale, 1.0)
-        survival_bonus = float(getattr(self.config, 'reward_survival_weight', 0.08)) * survival_progress
-
-        liquidity_scale = max(float(getattr(self.config, 'reward_liquidity_scale', 1000.0)), 1e-6)
-        due = max(float(self.should_payback) + float(self.iDebt), 0.0)
-        liquidity_buffer_gap = max(0.5 * due - max(float(self.money), 0.0), 0.0) / liquidity_scale
-        liquidity_penalty = float(getattr(self.config, 'reward_liquidity_weight', 0.25)) * liquidity_buffer_gap
-
-        operating_asset = max(float(self.money), 0.0) + max(float(self.stock), 0.0) * max(float(self.price), 0.0)
-        debt_pressure_cap = max(float(getattr(self.config, 'reward_debt_pressure_cap', 2.0)), 1e-6)
-        debt_pressure = min(max(float(self.debt), 0.0) / (operating_asset + liquidity_scale), debt_pressure_cap)
-        debt_pressure_penalty = float(getattr(self.config, 'reward_debt_pressure_weight', 0.12)) * debt_pressure
-
-        self.reward['economy'] = economy_reward + 0.5 * survival_bonus - liquidity_penalty
-        self.reward['business'] = business_reward + survival_bonus - liquidity_penalty - debt_pressure_penalty
+        self.reward['economy'] = self.revenue - self.last_cost
+        self.reward['business'] = self.revenue * 2 - self.last_cost + self.economy_profit
+        self.reward['economy'] /= 100
+        self.reward['business'] /= 100
 
 
 
