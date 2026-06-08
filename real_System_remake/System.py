@@ -66,6 +66,9 @@ enterprise_ddpg_config = Config(
     gail_reward_weight=2.0,
     gail_warmup_steps=5000,
     disc_update_ratio=1,
+    gail_reward_clip=2.0,
+    disc_learning_rate=1e-4,
+    disc_weight_decay=1e-4,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -154,7 +157,17 @@ bank_config = Bank_config(
 enterprise_config = Enterprise_config(
     name='',
     output_name='',
-    price=8.0, intention=5.0)
+    price=8.0, intention=5.0,
+    reward_survival_weight=0.08,
+    reward_survival_scale=100.0,
+    reward_liquidity_weight=0.25,
+    reward_liquidity_scale=1000.0,
+    reward_debt_pressure_weight=0.12,
+    reward_debt_pressure_cap=2.0,
+    fail_reward=-10.0,
+    fail_reward_clip=18.0,
+    fail_survival_target_day=90.0,
+    fail_survival_shortfall_weight=8.0)
 
 enterprise_add_list = {
     'production1': 'K',
@@ -289,8 +302,8 @@ class System:
                     var, critic_bank, actor_bank = self.Agent['bank1'].log()
 
                     # 2. production1 和 consumption1 是 enterprise_nnu，现在会返回 4 个值
-                    _, critic_production1, actor_production1, int_r_pro1 = self.Agent['production1'].log()
-                    _, crtic_consumption1, actor_consumption1, _ = self.Agent['consumption1'].log()
+                    _, critic_production1, actor_production1, int_r_pro1, d_real_pro1, d_fake_pro1 = self.Agent['production1'].log()
+                    _, crtic_consumption1, actor_consumption1, _, _, _ = self.Agent['consumption1'].log()
 
                     # --- 下面的 log 记录代码保持你刚才的样子不变 ---
                     wandb.log({'actor_loss/bank1': actor_bank})
@@ -305,6 +318,8 @@ class System:
 
                     if 'production1' in self.Agent:
                         wandb.log({'GAIL_Internal_Reward/pro1': int_r_pro1})
+                        wandb.log({'GAIL_D_real/pro1': d_real_pro1})
+                        wandb.log({'GAIL_D_fake/pro1': d_fake_pro1})
 
                 # for target_key in self.e_execute:
                 #     print('after_'+target_key+'ra_action', reward_pro[target_key])

@@ -16,9 +16,11 @@ class Config:
                  is_critic_double_network: bool = True, is_actor_update_delay: bool = True,
                  is_QNet_smooth_critic: bool = True, is_lstm: bool = True,
                  policy_noise: float = 0.2, discount: float = 0.99, max_hist_len=8, batch_lstm=256, update_every=50,
-                 learn_start_steps: int = 1024, gail_reward_weight: float = 2.0,
-                 gail_warmup_steps: int = 5000, disc_update_ratio: int = 1,
-                 critic_grad_clip: float = 0.0,
+                  learn_start_steps: int = 1024, gail_reward_weight: float = 2.0,
+                  gail_warmup_steps: int = 5000, disc_update_ratio: int = 1,
+                  gail_reward_clip: float = 2.0,
+                  disc_learning_rate: float = 1e-4, disc_weight_decay: float = 1e-4,
+                  critic_grad_clip: float = 0.0,
                  actor_grad_clip: float = 0.0, target_q_clip: float = 0.0,
                  critic_loss_type: str = 'mse', critic_huber_beta: float = 1.0,
                  actor_q_clip: float = 0.0, critic_output_bound: float = 0.0,
@@ -62,6 +64,9 @@ class Config:
         self.GAIL_REWARD_WEIGHT = gail_reward_weight
         self.GAIL_WARMUP_STEPS = gail_warmup_steps
         self.DISC_UPDATE_RATIO = disc_update_ratio
+        self.GAIL_REWARD_CLIP = gail_reward_clip
+        self.DISC_LEARNING_RATE = disc_learning_rate
+        self.DISC_WEIGHT_DECAY = disc_weight_decay
         self.CRITIC_GRAD_CLIP = critic_grad_clip
         self.ACTOR_GRAD_CLIP = actor_grad_clip
         self.TARGET_Q_CLIP = target_q_clip

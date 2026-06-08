@@ -114,6 +114,7 @@ class TD3(object):
         self.gail_reward_weight = getattr(config, 'GAIL_REWARD_WEIGHT', 2.0)
         self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
         self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
+        self.gail_reward_clip = float(getattr(config, 'GAIL_REWARD_CLIP', 2.0))
         self.critic_grad_clip = float(getattr(config, 'CRITIC_GRAD_CLIP', 0.0))
         self.actor_grad_clip = float(getattr(config, 'ACTOR_GRAD_CLIP', 0.0))
         self.target_q_clip = float(getattr(config, 'TARGET_Q_CLIP', 0.0))
@@ -127,6 +128,9 @@ class TD3(object):
         # self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.a_dim))
         self.episode_temp = {}
         self.show_lar_a = 1
+        self.last_disc_real_score = 0.0
+        self.last_disc_fake_score = 0.0
+        self.last_gail_reward = 0.0
         # TD3参数
         self.is_delay = config.IS_ACTOR_UPDATE_DELAY
         self.is_double = config.IS_CRITIC_DOUBLE_NETWORK
@@ -344,6 +348,8 @@ class TD3(object):
                         self.disc_optimizer.zero_grad()
                         real_logits = self.gail_disc(expert_s_n, expert_a_n)
                         fake_logits = self.gail_disc(fake_s_n, fake_a_n)
+                        self.last_disc_real_score = torch.sigmoid(real_logits.detach()).mean().item()
+                        self.last_disc_fake_score = torch.sigmoid(fake_logits.detach()).mean().item()
 
                         loss_D_real = F.binary_cross_entropy_with_logits(real_logits, torch.full_like(real_logits, 0.9))
                         loss_D_fake = F.binary_cross_entropy_with_logits(fake_logits, torch.full_like(fake_logits, 0.1))
@@ -376,7 +382,11 @@ class TD3(object):
                     # fake_s_n 和 fake_a_n 在上面的判别器更新块里已经标准化过了
                     disc_logits = self.gail_disc(fake_s_n, fake_a_n)
                     # 采用 Sigmoid 将分数平滑限制在 0~1 之间，绝对不会造成 Q 值爆炸
-                    dynamic_r_int = torch.sigmoid(disc_logits)
+                    # Stable GAIL reward: -log(1 - D) == softplus(logits).
+                    dynamic_r_int = F.softplus(disc_logits)
+                    if self.gail_reward_clip > 0:
+                        dynamic_r_int = torch.clamp(dynamic_r_int, max=self.gail_reward_clip)
+                    self.last_gail_reward = dynamic_r_int.mean().item()
 
                     # 此时的融合权重 w_gail。建议从 1.0 或 2.0 开始试。
                     gail_scale = min(1.0, train_age / self.gail_warmup_steps)

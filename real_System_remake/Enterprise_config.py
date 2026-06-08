@@ -4,13 +4,9 @@ def default_actWNDF(enterprise: any, target: str, action: any):  # action: -0.5~
 
 
 def default_act_shop(enterprise: any, target: str, action: any):  # action: -0.5~0.5
-
     if enterprise.__dict__['intention_policy'][target] == 0:
         return 10 * (action + 0.5)
     return enterprise.__dict__['intention_policy'][target] * (1 + action)
-
-    # 因为price决策是上一回合给的，此处的next_price是上回合赋值的，等价于这回合的price
-    # 所以将此刻next_price的值赋给price，并修改next_price的值以供下回合使用
 
 
 def default_actPrice(enterprise: any, target: str, action: any):  # action: -0.5~0.5
@@ -18,19 +14,30 @@ def default_actPrice(enterprise: any, target: str, action: any):  # action: -0.5
     enterprise.__dict__['next_price'] = enterprise.__dict__['next_price'] * (1 + action)
     return res
 
-class Enterprise_config:
 
-    def __init__(self,
-                 name: str,
-                 output_name: str,
-                 money: float = 0.0,      # 初始资金
-                 WNDF: float = 100.0,     # 第一回合默认借贷额度
-                 stock: float = 10.0,       # 初始库存
-                 price: float = 10.0,        # 初始价格
-                 intention: float = 0.0,    # 初始购买意愿
-                 gamma: float = 0.95,            # 每日统计数据如利润为 总利润 = γ * 总利润 + (1-γ) * 今日利润
-                 action_function:dict = None,      # 类型为字典 str:function()，决定设置各变量的方法
-                 ):
+class Enterprise_config:
+    def __init__(
+        self,
+        name: str,
+        output_name: str,
+        money: float = 0.0,
+        WNDF: float = 100.0,
+        stock: float = 10.0,
+        price: float = 10.0,
+        intention: float = 0.0,
+        gamma: float = 0.95,
+        reward_survival_weight: float = 0.08,
+        reward_survival_scale: float = 100.0,
+        reward_liquidity_weight: float = 0.25,
+        reward_liquidity_scale: float = 1000.0,
+        reward_debt_pressure_weight: float = 0.12,
+        reward_debt_pressure_cap: float = 2.0,
+        fail_reward: float = -10.0,
+        fail_reward_clip: float = 18.0,
+        fail_survival_target_day: float = 90.0,
+        fail_survival_shortfall_weight: float = 8.0,
+        action_function: dict = None,
+    ):
         self.name = name
         self.output_name = output_name
         self.money = money
@@ -39,20 +46,21 @@ class Enterprise_config:
         self.price = price
         self.intention = intention
         self.gamma = gamma
+        self.reward_survival_weight = reward_survival_weight
+        self.reward_survival_scale = reward_survival_scale
+        self.reward_liquidity_weight = reward_liquidity_weight
+        self.reward_liquidity_scale = reward_liquidity_scale
+        self.reward_debt_pressure_weight = reward_debt_pressure_weight
+        self.reward_debt_pressure_cap = reward_debt_pressure_cap
+        self.fail_reward = fail_reward
+        self.fail_reward_clip = fail_reward_clip
+        self.fail_survival_target_day = fail_survival_target_day
+        self.fail_survival_shortfall_weight = fail_survival_shortfall_weight
         self.action_function = action_function
         if self.action_function is None:
             self.action_function = {
-                                    'WNDF':default_actWNDF,
-                                    'K':default_act_shop,
-                                    'L':default_act_shop,
-                                    'price':default_actPrice
-                                    }
-
-
-
-
-
-
-
-
-
+                'WNDF': default_actWNDF,
+                'K': default_act_shop,
+                'L': default_act_shop,
+                'price': default_actPrice,
+            }

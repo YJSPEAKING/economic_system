@@ -114,7 +114,14 @@ class enterprise_nnu:
                 param.requires_grad = True
 
             # 固定权重
-            self.disc_optimizer = torch.optim.Adam(self.gail_disc.parameters(), lr=3e-4)
+            self.gail_reward_clip = float(getattr(config, 'GAIL_REWARD_CLIP', 2.0))
+            disc_lr = float(getattr(config, 'DISC_LEARNING_RATE', 1e-4))
+            disc_weight_decay = float(getattr(config, 'DISC_WEIGHT_DECAY', 1e-4))
+            self.disc_optimizer = torch.optim.Adam(
+                self.gail_disc.parameters(),
+                lr=disc_lr,
+                weight_decay=disc_weight_decay
+            )
 
             # 加入镇静剂：降低学习率 + 添加 L2 正则化）
             # self.disc_optimizer = torch.optim.Adam(
@@ -186,9 +193,11 @@ class enterprise_nnu:
 
                 # 3. 计算内部奖励 (仅用于 SwanLab 观察，绝不存入经验池)
                 logits = self.gail_disc(s_n.unsqueeze(0), a_n.unsqueeze(0))
-                score = torch.sigmoid(logits)
+                r_int_tensor = F.softplus(logits)
+                if self.gail_reward_clip > 0:
+                    r_int_tensor = torch.clamp(r_int_tensor, max=self.gail_reward_clip)
                 # 建议这里直接用 score.item()，用 -log 如果不稳定会导致数值爆炸
-                r_int = score.item()
+                r_int = r_int_tensor.item()
                 self.last_internal_reward = r_int
 
                 # 保持最纯净的环境奖励
@@ -215,8 +224,10 @@ class enterprise_nnu:
         var = self.enterprise.get_var()
         critic_loss , actor_loss = self.enterprise.get_loss()
         # 安全获取内部奖励，如果不是 production1 则返回 0.0
-        internal_reward = getattr(self, 'last_internal_reward', 0.0)
-        return var, critic_loss, actor_loss, internal_reward
+        internal_reward = getattr(self.enterprise, 'last_gail_reward', getattr(self, 'last_internal_reward', 0.0))
+        disc_real_score = getattr(self.enterprise, 'last_disc_real_score', 0.0)
+        disc_fake_score = getattr(self.enterprise, 'last_disc_fake_score', 0.0)
+        return var, critic_loss, actor_loss, internal_reward, disc_real_score, disc_fake_score
 
     def get_show(self):
         return self.enterprise.check_show()
