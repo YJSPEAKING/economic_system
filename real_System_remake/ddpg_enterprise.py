@@ -227,7 +227,8 @@ class enterprise_nnu:
         internal_reward = getattr(self.enterprise, 'last_gail_reward', getattr(self, 'last_internal_reward', 0.0))
         disc_real_score = getattr(self.enterprise, 'last_disc_real_score', 0.0)
         disc_fake_score = getattr(self.enterprise, 'last_disc_fake_score', 0.0)
-        return var, critic_loss, actor_loss, internal_reward, disc_real_score, disc_fake_score
+        bc_loss = getattr(self.enterprise, 'last_bc_loss', 0.0)
+        return var, critic_loss, actor_loss, internal_reward, disc_real_score, disc_fake_score, bc_loss
 
     def get_show(self):
         return self.enterprise.check_show()

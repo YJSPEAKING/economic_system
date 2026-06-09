@@ -63,7 +63,7 @@ enterprise_ddpg_config = Config(
     batch_size=1024,
     memory_capacity=200000,
     learn_start_steps=1024,
-    gail_reward_weight=2.0,
+    gail_reward_weight=0.2,
     gail_warmup_steps=5000,
     disc_update_ratio=1,
     disc_update_every=5,
@@ -72,6 +72,8 @@ enterprise_ddpg_config = Config(
     disc_weight_decay=1e-4,
     disc_real_label=0.7,
     disc_fake_label=0.3,
+    bc_weight=0.2,
+    bc_batch_size=1024,
     critic_grad_clip=1.0,
     actor_grad_clip=1.0,
     target_q_clip=500.0,
@@ -307,8 +309,8 @@ class System:
                     var, critic_bank, actor_bank = self.Agent['bank1'].log()
 
                     # 2. production1 和 consumption1 是 enterprise_nnu，现在会返回 4 个值
-                    _, critic_production1, actor_production1, int_r_pro1, d_real_pro1, d_fake_pro1 = self.Agent['production1'].log()
-                    _, crtic_consumption1, actor_consumption1, _, _, _ = self.Agent['consumption1'].log()
+                    _, critic_production1, actor_production1, int_r_pro1, d_real_pro1, d_fake_pro1, bc_loss_pro1 = self.Agent['production1'].log()
+                    _, crtic_consumption1, actor_consumption1, _, _, _, _ = self.Agent['consumption1'].log()
 
                     # --- 下面的 log 记录代码保持你刚才的样子不变 ---
                     wandb.log({'actor_loss/bank1': actor_bank})
@@ -325,6 +327,7 @@ class System:
                         wandb.log({'GAIL_Internal_Reward/pro1': int_r_pro1})
                         wandb.log({'GAIL_D_real/pro1': d_real_pro1})
                         wandb.log({'GAIL_D_fake/pro1': d_fake_pro1})
+                        wandb.log({'BC_Loss/pro1': bc_loss_pro1})
 
                 # for target_key in self.e_execute:
                 #     print('after_'+target_key+'ra_action', reward_pro[target_key])

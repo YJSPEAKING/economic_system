@@ -118,6 +118,8 @@ class TD3(object):
         self.gail_reward_clip = float(getattr(config, 'GAIL_REWARD_CLIP', 2.0))
         self.disc_real_label = float(getattr(config, 'DISC_REAL_LABEL', 0.7))
         self.disc_fake_label = float(getattr(config, 'DISC_FAKE_LABEL', 0.3))
+        self.bc_weight = float(getattr(config, 'BC_WEIGHT', 0.0))
+        self.bc_batch_size = int(getattr(config, 'BC_BATCH_SIZE', 0))
         self.critic_grad_clip = float(getattr(config, 'CRITIC_GRAD_CLIP', 0.0))
         self.actor_grad_clip = float(getattr(config, 'ACTOR_GRAD_CLIP', 0.0))
         self.target_q_clip = float(getattr(config, 'TARGET_Q_CLIP', 0.0))
@@ -134,6 +136,7 @@ class TD3(object):
         self.last_disc_real_score = 0.0
         self.last_disc_fake_score = 0.0
         self.last_gail_reward = 0.0
+        self.last_bc_loss = 0.0
         # TD3参数
         self.is_delay = config.IS_ACTOR_UPDATE_DELAY
         self.is_double = config.IS_CRITIC_DOUBLE_NETWORK
@@ -433,7 +436,22 @@ class TD3(object):
                 actor_Q = self.critic.Q1(b_s_tensor, self.actor(b_s_tensor))
                 if self.actor_q_clip > 0:
                     actor_Q = torch.clamp(actor_Q, -self.actor_q_clip, self.actor_q_clip)
+                self.last_bc_loss = 0.0
                 self.actor_loss = -actor_Q.mean()
+                if self.bc_weight > 0 and hasattr(self, 'sample_expert'):
+                    bc_batch_size = self.bc_batch_size if self.bc_batch_size > 0 else self.BATCH_SIZE
+                    expert_s_bc, expert_a_bc = self.sample_expert(bc_batch_size)
+                    if expert_s_bc is not None:
+                        expert_s_bc = torch.clamp(
+                            (expert_s_bc - self.obs_mean) / torch.sqrt(self.obs_var + 1e-8),
+                            -5.0,
+                            5.0
+                        )
+                        expert_a_bc = torch.clamp(expert_a_bc, -self.a_bound, self.a_bound)
+                        bc_pred_a = self.actor(expert_s_bc)
+                        bc_loss = F.mse_loss(bc_pred_a, expert_a_bc)
+                        self.last_bc_loss = bc_loss.detach().item()
+                        self.actor_loss = self.actor_loss + self.bc_weight * bc_loss
 
                 self.actor_optimizer.zero_grad()
                 self.actor_loss.backward()

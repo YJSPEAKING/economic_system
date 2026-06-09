@@ -22,6 +22,7 @@ class Config:
                   gail_reward_clip: float = 2.0,
                   disc_learning_rate: float = 1e-4, disc_weight_decay: float = 1e-4,
                   disc_real_label: float = 0.7, disc_fake_label: float = 0.3,
+                  bc_weight: float = 0.0, bc_batch_size: int = 0,
                   critic_grad_clip: float = 0.0,
                  actor_grad_clip: float = 0.0, target_q_clip: float = 0.0,
                  critic_loss_type: str = 'mse', critic_huber_beta: float = 1.0,
@@ -72,6 +73,8 @@ class Config:
         self.DISC_WEIGHT_DECAY = disc_weight_decay
         self.DISC_REAL_LABEL = disc_real_label
         self.DISC_FAKE_LABEL = disc_fake_label
+        self.BC_WEIGHT = bc_weight
+        self.BC_BATCH_SIZE = bc_batch_size
         self.CRITIC_GRAD_CLIP = critic_grad_clip
         self.ACTOR_GRAD_CLIP = actor_grad_clip
         self.TARGET_Q_CLIP = target_q_clip

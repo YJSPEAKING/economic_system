@@ -62,7 +62,7 @@ swanlab_config = {
         'learning_rate_decay': 1,
         'random_seed': 184,
         'memory_capacity': 200000,
-        'gail_reward_weight': 2.0,
+        'gail_reward_weight': 0.2,
         'gail_warmup_steps': 5000,
         'disc_update_ratio': 1,
         'disc_update_every': 5,
@@ -71,6 +71,8 @@ swanlab_config = {
         'disc_weight_decay': 1e-4,
         'disc_real_label': 0.7,
         'disc_fake_label': 0.3,
+        'bc_weight': 0.2,
+        'bc_batch_size': 1024,
         'critic_grad_clip': 1.0,
         'actor_grad_clip': 1.0,
         'target_q_clip': 500.0,
@@ -104,7 +106,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="online GAIL+TD3 v1.22, soft discriminator labels and enterprise TD3 stability",
+                         notes="online GAIL+TD3 v1.23, lower GAIL reward and production BC regularization",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
