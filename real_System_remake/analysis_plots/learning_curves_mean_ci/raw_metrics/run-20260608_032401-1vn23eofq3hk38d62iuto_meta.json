@@ -1,0 +1,12 @@
+{
+  "run": "run-20260608_032401-1vn23eofq3hk38d62iuto",
+  "seed": "739",
+  "description": "online GAIL+TD3 v1.20, smoother daily bank reward and stronger terminal survival penalty",
+  "git_info": "[\"Method1_绂荤嚎+鍦ㄧ嚎绠楁硶\", null]",
+  "metric_counts": {
+    "survival": 36,
+    "production": 36,
+    "consumption": 36,
+    "bank": 36
+  }
+}

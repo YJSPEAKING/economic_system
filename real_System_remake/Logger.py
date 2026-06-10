@@ -54,7 +54,7 @@ class Logger:
                                   'money': '现金',
                                   'stock': '存货', 'debt':'债务', 'revenue': '收入', 'iDebt':'利息', 'cost': '支出', 'business_profit': '商业利润',
                                   'price': '今日定价','profit':'利润', 'economy_profit':'金融利润', 'next_price':'次日定价', 'WNDF':'决策贷款意愿', 'get_WNDF': '获得贷款',
-                                  'total_profit': '总利润', 'total_revenue': '总收入', 'total_cost': '总支出', 'output': '本回合生产',
+                                  'total_profit': '总利润', 'total_revenue': '总收入', 'total_cost': '总支出', 'total_idebt': '总利息', 'output': '本回合生产',
                                   'sales': '本回合售出','total_sales':'总售出', 'reward':'奖励','intention_policy_K':'决策意愿_K',
                                   'intention_policy_L': '决策意愿_L','WNDB_production1':'借贷意愿_生产企业1','WNDB_consumption1':'借贷意愿_消费企业1',
                                   'WNDB_production2': '借贷意愿_生产企业2', 'WNDB_consumption2': '借贷意愿_消费企业2',
@@ -62,7 +62,7 @@ class Logger:
                                   'WNDB': '借贷意愿', 'real_WNDB': '实际借贷','total_reward':'累计奖励'}
         # 企业普通属性
         self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
-                            'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'output', 'sales','total_sales']
+                            'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'total_idebt', 'output', 'sales','total_sales']
         # 企业字典变量属性
         self.e_dict = {'intention_policy': ['K', 'L'], 'get_shop': ['K', 'L'],'reward':['business','economy'],'loss':['business','economy'],
                        'total_reward':['business','economy']}
@@ -338,53 +338,55 @@ class Logger:
         self.output_graph('百回合累计奖励_银行', save_path=path,xlabel='回合/100',ylabel='平均累计奖励/1000')
 
     def swanlab_log(self, start_at: int = 0, epi=None):
+        if epi is None:
+            epi = len(self.data['enterprise']['finish']['消费企业1']['天数'])
+        log_step = epi // 100
+        start = epi - 100
+        end = epi
         # 每百回合生存天数
         day = self.data['enterprise']['finish']['消费企业1']['天数'][start_at:]
         count = 0
-        start = epi-100
-        end = epi
         for i in range(start, end):
             count += day[i]
         res = count/100
-        # if epi is None:
-        swanlab.log({'每百回合/存活天数': res})
-        # else:
-        #     swanlab.log({'每百回合/存活天数': res}, step=epi // 100)
+        swanlab.log({'每百回合/存活天数': res}, step=log_step)
 
-        # 每百回合累计奖励
-        #   enterprise
-        reward_name_list = ['累计奖励_business']
+        # 每百回合累计收益。这里只改变展示指标，不改变训练 reward。
+        # 企业综合收益按论文公式计算：S = 2 * 总收入 - 总支出 - 总利息。
         target_name_list = ['生产企业1', '消费企业1', '生产企业2', '消费企业2']
-        enterprise_reward_mul = 100
         try:
-            for reward_name in reward_name_list:
-                for target_name in target_name_list:
-                    reward = self.data['enterprise']['finish'][target_name][reward_name][start_at:]
-                    count = 0
-                    for i in range(start,end):
-                        count += (reward[i] * enterprise_reward_mul)
-                    res = count/100
-                    if target_name == '生产企业1':
-                        swanlab.log({'每百回合/累计奖励/生产企业1': res})
-                    elif target_name == '消费企业1':
-                        swanlab.log({'每百回合/累计奖励/消费企业1': res})
-                    elif target_name == '生产企业2':
-                        swanlab.log({'每百回合/累计奖励/生产企业2': res})
-                    else:
-                        swanlab.log({'每百回合/累计奖励/消费企业2': res})
+            for target_name in target_name_list:
+                target_data = self.data['enterprise']['finish'][target_name]
+                total_revenue = target_data['总收入'][start_at:]
+                total_cost = target_data['总支出'][start_at:]
+                total_interest = target_data['总利息'][start_at:]
+                count = 0
+                for i in range(start, end):
+                    count += 2 * total_revenue[i] - total_cost[i] - total_interest[i]
+                res = count / 100
+                if target_name == '生产企业1':
+                    swanlab.log({'每百回合/累计奖励/生产企业1': res}, step=log_step)
+                elif target_name == '消费企业1':
+                    swanlab.log({'每百回合/累计奖励/消费企业1': res}, step=log_step)
+                elif target_name == '生产企业2':
+                    swanlab.log({'每百回合/累计奖励/生产企业2': res}, step=log_step)
+                else:
+                    swanlab.log({'每百回合/累计奖励/消费企业2': res}, step=log_step)
         except KeyError:
             pass
-        #    bank
-        bank_reward_mul = 100
-        reward = self.data['bank']['finish']['银行']['累计奖励_借贷意愿'][start_at:]
+
+        # 银行累计收益按论文公式计算：S_b = 企业累计支付利息之和。
         count = 0
+        available_enterprises = [
+            target_name for target_name in target_name_list
+            if target_name in self.data['enterprise']['finish']
+            and '总利息' in self.data['enterprise']['finish'][target_name]
+        ]
         for i in range(start, end):
-            count += (reward[i] * bank_reward_mul)
-        if count < 0:
-            res = count / 1000
-        else:
-            res = count / 100
-        swanlab.log({'每百回合/累计奖励/银行': res})
+            for target_name in available_enterprises:
+                count += self.data['enterprise']['finish'][target_name]['总利息'][start_at:][i]
+        res = count / 100
+        swanlab.log({'每百回合/累计奖励/银行': res}, step=log_step)
         self._log_learning_speed_metrics(day, epi)
 
     def _moving_average(self, values, window):

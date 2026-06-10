@@ -48,6 +48,9 @@ use_wandb = True
 stable_at = 8000
 end_at = 100000
 use_rbtree = False
+max_episodes = 10000
+min_logged_episode = 6000
+max_total_sim_days = 180000
 # Notice 如果修改lstm的隐藏层节点数量，需要去经验池get batch函数里同步修改
 enterprise_ddpg_config = Config(
     scope='',
@@ -187,8 +190,8 @@ class System:
 
     def run(self):
 
-        for episode in range(10000):
-            if self.epiday > 180000 and episode % 100 == 0:
+        for episode in range(max_episodes):
+            if episode > min_logged_episode and self.epiday > max_total_sim_days and episode % 100 == 0:
                 break
             state = self.env.reset()
             last_state = None

@@ -1,0 +1,5 @@
+notes_or_selection=online GAIL+TD3 v1.20, smoother daily bank reward and stronger terminal survival penalty
+run-20260608_032401-1vn23eofq3hk38d62iuto	seed=739	path=D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\swanlog\run-20260608_032401-1vn23eofq3hk38d62iuto
+run-20260608_022212-p7r9r89rlnh7nkgxougk8	seed=83	path=D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\swanlog\run-20260608_022212-p7r9r89rlnh7nkgxougk8
+run-20260608_011942-beielmvwn03zgc3wemv0s	seed=291	path=D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\swanlog\run-20260608_011942-beielmvwn03zgc3wemv0s
+run-20260607_235724-vku8wqzgoefx9fax0q2a8	seed=184	path=D:\福州大学\3.课外\实验\经济系统cleanclean\经济系统clean\real_System_remake\swanlog\run-20260607_235724-vku8wqzgoefx9fax0q2a8
