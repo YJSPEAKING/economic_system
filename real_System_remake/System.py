@@ -127,6 +127,8 @@ def apply_run_seed(seed):
         'transformer_hist_hidden': enterprise_ddpg_config.TRANSFORMER_HIST_HIDDEN,
         'var_end_at': enterprise_ddpg_config.VAR_END_AT,
         'learning_rate_critic_transformer': enterprise_ddpg_config.LEARNING_RATE_CRITIC_TRANSFORMER,
+        'expert_sequence_precompute': True,
+        'generated_sequence_cache': True,
     })
 
 bank_config = Bank_config(

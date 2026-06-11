@@ -18,10 +18,12 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class TrajectorySequenceStore:
-    def __init__(self, seq_len, max_episodes=2000):
+    def __init__(self, seq_len, max_episodes=2000, cache_windows=False):
         self.seq_len = max(1, int(seq_len))
         self.max_episodes = max_episodes
+        self.cache_windows = cache_windows
         self.episodes = OrderedDict()
+        self.episode_windows = OrderedDict()
 
     def record(self, h_epi, state, action):
         if h_epi is None:
@@ -29,14 +31,22 @@ class TrajectorySequenceStore:
         key = int(h_epi)
         if key not in self.episodes:
             self.episodes[key] = []
+            if self.cache_windows:
+                self.episode_windows[key] = []
         else:
             self.episodes.move_to_end(key)
+            if self.cache_windows and key in self.episode_windows:
+                self.episode_windows.move_to_end(key)
         self.episodes[key].append((
             np.asarray(state, dtype=np.float32).copy(),
             np.asarray(action, dtype=np.float32).copy()
         ))
+        if self.cache_windows:
+            self.episode_windows[key].append(self._history(self.episodes[key], len(self.episodes[key]) - 1))
         while len(self.episodes) > self.max_episodes:
-            self.episodes.popitem(last=False)
+            old_key, _ = self.episodes.popitem(last=False)
+            if self.cache_windows:
+                self.episode_windows.pop(old_key, None)
 
     def _history(self, seq, end_pos):
         if not seq:
@@ -53,8 +63,16 @@ class TrajectorySequenceStore:
     def histories_for(self, pick_epi, pick_pos):
         states, actions = [], []
         for epi, pos in zip(np.asarray(pick_epi).reshape(-1), np.asarray(pick_pos).reshape(-1)):
-            seq = self.episodes.get(int(epi))
-            hist = self._history(seq, pos) if seq is not None else None
+            key = int(epi)
+            hist = None
+            if self.cache_windows:
+                windows = self.episode_windows.get(key)
+                if windows:
+                    pos = int(max(0, min(int(pos), len(windows) - 1)))
+                    hist = windows[pos]
+            if hist is None:
+                seq = self.episodes.get(key)
+                hist = self._history(seq, pos) if seq is not None else None
             if hist is None:
                 return None
             states.append(hist[0])
@@ -62,14 +80,19 @@ class TrajectorySequenceStore:
         return np.stack(states, axis=0), np.stack(actions, axis=0)
 
     def sample(self, batch_size):
-        candidates = [key for key, seq in self.episodes.items() if len(seq) > 0]
+        source = self.episode_windows if self.cache_windows else self.episodes
+        candidates = [key for key, seq in source.items() if len(seq) > 0]
         if not candidates:
             return None
         states, actions = [], []
         for _ in range(batch_size):
             key = random.choice(candidates)
-            seq = self.episodes[key]
-            hist = self._history(seq, random.randrange(len(seq)))
+            if self.cache_windows:
+                windows = self.episode_windows[key]
+                hist = windows[random.randrange(len(windows))]
+            else:
+                seq = self.episodes[key]
+                hist = self._history(seq, random.randrange(len(seq)))
             states.append(hist[0])
             actions.append(hist[1])
         return np.stack(states, axis=0), np.stack(actions, axis=0)
@@ -282,13 +305,18 @@ class TD3(object):
             and self.max_hist_len > 1
             and self.scope == 'production1'
         )
-        self.sequence_store = TrajectorySequenceStore(self.max_hist_len)
+        self.use_sequence_cache = self.scope == 'production1'
+        self.sequence_store = TrajectorySequenceStore(
+            self.max_hist_len,
+            cache_windows=self.use_sequence_cache
+        )
         if self.scope == 'production1':
             print(
                 f"[Transformer] D=True, Critic={self.use_transformer_critic}, "
                 f"Actor={self.use_transformer_actor}, hist_len={self.max_hist_len}, "
                 f"nhead={self.transformer_nhead}, hist_hidden={self.transformer_hist_hidden}"
             )
+            print(f"[Sequence Cache] generated={self.use_sequence_cache}")
         #self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         self.pointer = 0
         # self.noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.a_dim))
