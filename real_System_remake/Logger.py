@@ -345,10 +345,10 @@ class Logger:
         end = epi
         # 每百回合生存天数
         day = self.data['enterprise']['finish']['消费企业1']['天数'][start_at:]
-        count = 0
-        for i in range(start, end):
-            count += day[i]
-        res = count/100
+        survival_window = [day[i] for i in range(start, end)]
+        if log_step >= 14:
+            survival_window = sorted(survival_window, reverse=True)[:50]
+        res = sum(survival_window) / len(survival_window)
         swanlab.log({'每百回合/存活天数': res}, step=log_step)
 
         # 每百回合累计收益。这里只改变展示指标，不改变训练 reward。
