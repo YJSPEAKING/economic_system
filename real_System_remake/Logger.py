@@ -365,13 +365,13 @@ class Logger:
                     count += 2 * total_revenue[i] - total_cost[i] - total_interest[i]
                 res = count / 100
                 if target_name == '生产企业1':
-                    swanlab.log({'每百回合/累计奖励/生产企业1': res}, step=log_step)
+                    swanlab.log({'每百回合/累计收益/生产企业': res}, step=log_step)
                 elif target_name == '消费企业1':
-                    swanlab.log({'每百回合/累计奖励/消费企业1': res}, step=log_step)
+                    swanlab.log({'每百回合/累计收益/消费企业': res}, step=log_step)
                 elif target_name == '生产企业2':
-                    swanlab.log({'每百回合/累计奖励/生产企业2': res}, step=log_step)
+                    swanlab.log({'每百回合/累计收益/生产企业2': res}, step=log_step)
                 else:
-                    swanlab.log({'每百回合/累计奖励/消费企业2': res}, step=log_step)
+                    swanlab.log({'每百回合/累计收益/消费企业2': res}, step=log_step)
         except KeyError:
             pass
 
@@ -386,7 +386,7 @@ class Logger:
             for target_name in available_enterprises:
                 count += self.data['enterprise']['finish'][target_name]['总利息'][start_at:][i]
         res = count / 100
-        swanlab.log({'每百回合/累计奖励/银行': res}, step=log_step)
+        swanlab.log({'每百回合/累计收益/银行': res}, step=log_step)
         self._log_learning_speed_metrics(day, epi)
 
     def _moving_average(self, values, window):
