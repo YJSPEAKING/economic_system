@@ -132,6 +132,8 @@ class enterprise_nnu:
                     values = torch.FloatTensor(group.values).to(self.device)
                     if len(values) > 0:
                         self.expert_episodes.append((values[:, :33], values[:, 33:37]))
+                self.expert_sequence_cache = {}
+                self._build_expert_sequence_cache(getattr(config, 'MAX_HIST_LEN', 6))
                 print(f"✅ 专家记忆库已挂载！共包含 {self.expert_size} 条记录。")
             else:
                 raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
@@ -184,24 +186,46 @@ class enterprise_nnu:
         indices = torch.randint(0, self.expert_size, (batch_size,), device=self.device)
         return self.expert_states[indices], self.expert_actions[indices]
 
-    def sample_expert_sequence(self, batch_size, seq_len):
+    def _build_expert_sequence_cache(self, seq_len):
+        seq_len = int(seq_len)
+        if not hasattr(self, 'expert_sequence_cache'):
+            self.expert_sequence_cache = {}
+        if seq_len in self.expert_sequence_cache:
+            return self.expert_sequence_cache[seq_len]
         if not getattr(self, 'expert_episodes', None):
             return None
-        states, actions = [], []
-        for _ in range(batch_size):
-            ep_idx = torch.randint(0, len(self.expert_episodes), (1,), device=self.device).item()
-            ep_s, ep_a = self.expert_episodes[ep_idx]
-            end = torch.randint(0, len(ep_s), (1,), device=self.device).item()
-            start = max(0, end - seq_len + 1)
-            s_window = ep_s[start:end + 1]
-            a_window = ep_a[start:end + 1]
-            if len(s_window) < seq_len:
-                pad_len = seq_len - len(s_window)
-                s_window = torch.cat([s_window[:1].repeat(pad_len, 1), s_window], dim=0)
-                a_window = torch.cat([a_window[:1].repeat(pad_len, 1), a_window], dim=0)
-            states.append(s_window)
-            actions.append(a_window)
-        return torch.stack(states, dim=0), torch.stack(actions, dim=0)
+
+        state_windows, action_windows = [], []
+        for ep_s, ep_a in self.expert_episodes:
+            for end in range(len(ep_s)):
+                start = max(0, end - seq_len + 1)
+                s_window = ep_s[start:end + 1]
+                a_window = ep_a[start:end + 1]
+                if len(s_window) < seq_len:
+                    pad_len = seq_len - len(s_window)
+                    s_window = torch.cat([s_window[:1].repeat(pad_len, 1), s_window], dim=0)
+                    a_window = torch.cat([a_window[:1].repeat(pad_len, 1), a_window], dim=0)
+                state_windows.append(s_window)
+                action_windows.append(a_window)
+
+        if not state_windows:
+            return None
+
+        cache = (
+            torch.stack(state_windows, dim=0).contiguous(),
+            torch.stack(action_windows, dim=0).contiguous()
+        )
+        self.expert_sequence_cache[seq_len] = cache
+        print(f"[Sequence Cache] expert_windows={cache[0].shape[0]}, seq_len={seq_len}")
+        return cache
+
+    def sample_expert_sequence(self, batch_size, seq_len):
+        cache = self._build_expert_sequence_cache(seq_len)
+        if cache is None:
+            return None
+        states, actions = cache
+        indices = torch.randint(0, states.shape[0], (batch_size,), device=self.device)
+        return states.index_select(0, indices), actions.index_select(0, indices)
 
     def run_enterprise(self, state, new_ep):
         if self.scope == 'production1':
