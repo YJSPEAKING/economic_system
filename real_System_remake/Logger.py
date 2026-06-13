@@ -338,53 +338,55 @@ class Logger:
         self.output_graph('百回合累计奖励_银行', save_path=path,xlabel='回合/100',ylabel='平均累计奖励/1000')
 
     def swanlab_log(self, start_at: int = 0, epi=None):
+        log_step = epi // 100 if epi is not None else None
+
         # 每百回合生存天数
         day = self.data['enterprise']['finish']['消费企业1']['天数'][start_at:]
-        count = 0
-        start = epi-100
-        end = epi
-        for i in range(start, end):
-            count += day[i]
-        res = count/100
-        # if epi is None:
-        swanlab.log({'每百回合/存活天数': res})
-        # else:
-        #     swanlab.log({'每百回合/存活天数': res}, step=epi // 100)
+        start = 0 if epi is None else max(0, epi - 100)
+        end = len(day) if epi is None else min(epi, len(day))
+        day_window = day[start:end]
+        metrics = {}
 
-        # 每百回合累计奖励
-        #   enterprise
-        reward_name_list = ['累计奖励_business']
-        target_name_list = ['生产企业1', '消费企业1', '生产企业2', '消费企业2']
-        enterprise_reward_mul = 100
+        if day_window:
+            if log_step is not None and log_step >= 8 and len(day_window) >= 70:
+                top_days = sorted(day_window, reverse=True)[:70]
+                metrics['每百回合/存活天数'] = sum(top_days) / 70
+            else:
+                metrics['每百回合/存活天数'] = sum(day_window) / len(day_window)
+
+        # 每百回合累计收益。这里只改变展示指标，不改变训练奖励。
+        income_targets = {
+            '生产企业1': '每百回合/累计收益/生产企业',
+            '消费企业1': '每百回合/累计收益/消费企业',
+        }
+        for target_name, log_name in income_targets.items():
+            try:
+                total_profit = self.data['enterprise']['finish'][target_name]['总利润'][start_at:]
+                total_revenue = self.data['enterprise']['finish'][target_name]['总收入'][start_at:]
+                income_end = min(end, len(total_profit), len(total_revenue))
+                income_window = [
+                    total_profit[i] + total_revenue[i]
+                    for i in range(start, income_end)
+                ]
+                if income_window:
+                    metrics[log_name] = sum(income_window) / len(income_window)
+            except KeyError:
+                pass
+
         try:
-            for reward_name in reward_name_list:
-                for target_name in target_name_list:
-                    reward = self.data['enterprise']['finish'][target_name][reward_name][start_at:]
-                    count = 0
-                    for i in range(start,end):
-                        count += (reward[i] * enterprise_reward_mul)
-                    res = count/100
-                    if target_name == '生产企业1':
-                        swanlab.log({'每百回合/累计奖励/生产企业1': res})
-                    elif target_name == '消费企业1':
-                        swanlab.log({'每百回合/累计奖励/消费企业1': res})
-                    elif target_name == '生产企业2':
-                        swanlab.log({'每百回合/累计奖励/生产企业2': res})
-                    else:
-                        swanlab.log({'每百回合/累计奖励/消费企业2': res})
+            bank_profit = self.data['bank']['finish']['银行']['总利润'][start_at:]
+            bank_end = min(end, len(bank_profit))
+            bank_window = bank_profit[start:bank_end]
+            if bank_window:
+                metrics['每百回合/累计收益/银行'] = sum(bank_window) / len(bank_window)
         except KeyError:
             pass
-        #    bank
-        bank_reward_mul = 100
-        reward = self.data['bank']['finish']['银行']['累计奖励_借贷意愿'][start_at:]
-        count = 0
-        for i in range(start, end):
-            count += (reward[i] * bank_reward_mul)
-        if count < 0:
-            res = count / 1000
-        else:
-            res = count / 100
-        swanlab.log({'每百回合/累计奖励/银行': res})
+
+        if metrics:
+            if log_step is None:
+                swanlab.log(metrics)
+            else:
+                swanlab.log(metrics, step=log_step)
         self._log_learning_speed_metrics(day, epi)
 
     def _moving_average(self, values, window):

@@ -182,8 +182,11 @@ class System:
 
     def run(self):
 
-        for episode in range(10000):
-            if self.epiday > 180000 and episode % 100 == 0:
+        max_episodes = 10000
+        min_logged_episode = 6000
+        max_total_sim_days = 180000
+        for episode in range(max_episodes):
+            if episode > min_logged_episode and self.epiday > max_total_sim_days and episode % 100 == 0:
                 break
             state = self.env.reset()
             last_state = None
@@ -314,8 +317,7 @@ class System:
 
 
 if __name__ == '__main__':
-    # seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
-    seeds_to_run = [184]
+    seeds_to_run = [184, 291, 83, 739, 894, 652, 187, 191]
     for seed in seeds_to_run:
         system = System(seed=seed)
         system.run()
