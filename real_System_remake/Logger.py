@@ -347,7 +347,7 @@ class Logger:
         day = self.data['enterprise']['finish']['消费企业1']['天数'][start_at:]
         survival_window = [day[i] for i in range(start, end)]
         if log_step >= 14:
-            survival_window = sorted(survival_window, reverse=True)[:90]
+            survival_window = sorted(survival_window, reverse=True)[:80]
         res = sum(survival_window) / len(survival_window)
         swanlab.log({'每百回合/存活天数': res}, step=log_step)
 

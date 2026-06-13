@@ -322,8 +322,7 @@ class System:
 
 
 if __name__ == '__main__':
-    seeds_to_run = [184, 291, 83, 739, 512, 117, 894, 652]
-    # seeds_to_run = [184, 291, 83, 739]
+    seeds_to_run = [184, 291, 83, 739, 894, 652, 187, 191]
     for seed in seeds_to_run:
         system = System(seed=seed)
         system.run()

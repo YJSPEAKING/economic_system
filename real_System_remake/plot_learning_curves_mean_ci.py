@@ -32,16 +32,16 @@ import numpy as np
 
 METRIC_KEYS = {
     "survival": "\u6bcf\u767e\u56de\u5408/\u5b58\u6d3b\u5929\u6570",
-    "production": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u5956\u52b1/\u751f\u4ea7\u4f01\u4e1a1",
-    "consumption": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u5956\u52b1/\u6d88\u8d39\u4f01\u4e1a1",
-    "bank": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u5956\u52b1/\u94f6\u884c",
+    "production": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u751f\u4ea7\u4f01\u4e1a",
+    "consumption": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u6d88\u8d39\u4f01\u4e1a",
+    "bank": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u94f6\u884c",
 }
 
 METRIC_TITLES = {
     "survival": "System Survival Days",
-    "production": "每百回合/累计利润/生产企业",
-    "consumption": "每百回合/累计利润/消费企业",
-    "bank": "每百回合/累计奖励/银行",
+    "production": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u751f\u4ea7\u4f01\u4e1a",
+    "consumption": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u6d88\u8d39\u4f01\u4e1a",
+    "bank": "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u94f6\u884c",
 }
 
 Y_LABELS = {
