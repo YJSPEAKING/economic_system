@@ -348,7 +348,7 @@ class Logger:
         metrics = {}
 
         if day_window:
-            if log_step is not None and log_step >= 8 and len(day_window) >= 70:
+            if log_step is not None and log_step >= 7 and len(day_window) >= 70:
                 top_days = sorted(day_window, reverse=True)[:70]
                 metrics['每百回合/存活天数'] = sum(top_days) / 70
             else:
