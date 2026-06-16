@@ -1,0 +1,12 @@
+{
+  "run": "run-20260612_180041-333xdgw1vzwlocfrd2js7",
+  "seed": "187",
+  "description": "online GAIL+TD3 v1.21, paper income curves and survival top-50 average after step 14",
+  "git_info": "[\"v1.20-new-work\", \"bf6f3c561b76820e2908ced3c295a073bade592c\"]",
+  "metric_counts": {
+    "survival": 60,
+    "production": 60,
+    "consumption": 60,
+    "bank": 60
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "run": "run-20260613_175731-c6tzfp7ahu9imqj0v36hq",
+  "seed": "739",
+  "description": "TD3 origin data",
+  "git_info": "[null, null]",
+  "metric_counts": {
+    "survival": 60,
+    "production": 60,
+    "consumption": 60,
+    "bank": 60
+  }
+}

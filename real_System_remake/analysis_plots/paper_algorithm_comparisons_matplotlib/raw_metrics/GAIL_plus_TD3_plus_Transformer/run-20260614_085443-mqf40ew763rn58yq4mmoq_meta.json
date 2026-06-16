@@ -1,0 +1,12 @@
+{
+  "run": "run-20260614_085443-mqf40ew763rn58yq4mmoq",
+  "seed": "83",
+  "description": "transformerv1.7, income_display, top70_survival_step8, min6000_stop",
+  "git_info": "[\"run_transformer\", \"c9c88e13921409d1b8fabb67780f4fc25ab641e9\"]",
+  "metric_counts": {
+    "survival": 60,
+    "production": 60,
+    "consumption": 60,
+    "bank": 60
+  }
+}
