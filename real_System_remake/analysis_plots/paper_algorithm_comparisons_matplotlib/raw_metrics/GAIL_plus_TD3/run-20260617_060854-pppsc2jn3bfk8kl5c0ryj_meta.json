@@ -1,0 +1,12 @@
+{
+  "run": "run-20260617_060854-pppsc2jn3bfk8kl5c0ryj",
+  "seed": "739",
+  "description": "online GAIL+TD3 v1.23, paper income curves and standard 100-episode survival average",
+  "git_info": "[\"v1.20-new-work\", \"1c7bdc7fd6370c2262e6dc247ab9b8e5f29a49e8\"]",
+  "metric_counts": {
+    "survival": 60,
+    "production": 60,
+    "consumption": 60,
+    "bank": 60
+  }
+}

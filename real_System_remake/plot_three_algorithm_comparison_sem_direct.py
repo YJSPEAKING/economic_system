@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import csv
 import math
-from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from PIL import Image, ImageDraw
 
 from plot_two_algorithm_comparisons_direct import (
-    COMPARISONS,
     FIG_HEIGHT,
     FIG_WIDTH,
     GROUPS,
@@ -21,6 +19,18 @@ from plot_two_algorithm_comparisons_direct import (
     load_series,
     text_size,
 )
+
+
+COMPARISON = {
+    "name": "td3_gail_td3_transformer_sem",
+    "title": "TD3 vs GAIL+TD3 vs GAIL+TD3+Transformer (Mean ± SEM)",
+    "groups": ["TD3", "GAIL+TD3", "GAIL+TD3+Transformer"],
+    "colors": {
+        "TD3": (31, 119, 180),
+        "GAIL+TD3": (255, 127, 14),
+        "GAIL+TD3+Transformer": (44, 160, 44),
+    },
+}
 
 
 def aggregate_sem(series: Sequence[dict]) -> Optional[dict]:
@@ -48,7 +58,7 @@ def aggregate_sem(series: Sequence[dict]) -> Optional[dict]:
     return {
         "steps": steps,
         "mean": means,
-        "ci": sems,  # draw_plot uses this field as the half-width of the shaded band.
+        "ci": sems,
         "n_by_step": ns,
         "n_runs": len(series),
         "seeds": [item["seed"] for item in series],
@@ -56,10 +66,12 @@ def aggregate_sem(series: Sequence[dict]) -> Optional[dict]:
 
 
 def write_summary(group_data: Dict[str, Dict[str, Optional[dict]]]) -> None:
-    with (OUT_DIR / "direct_comparison_sem_summary.csv").open("w", encoding="utf-8-sig", newline="") as file:
+    summary_path = OUT_DIR / "three_algorithm_comparison_sem_summary.csv"
+    with summary_path.open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["group", "metric_id", "n_runs", "first_step", "last_step", "last_step_n", "last_mean", "last_sem", "seeds"])
-        for group_name, metrics in group_data.items():
+        for group_name in COMPARISON["groups"]:
+            metrics = group_data[group_name]
             for metric_id in METRIC_ORDER:
                 agg = metrics.get(metric_id)
                 if agg is None:
@@ -80,13 +92,6 @@ def write_summary(group_data: Dict[str, Dict[str, Optional[dict]]]) -> None:
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    missing_dirs = [str(path) for path in GROUP_DIRS.values() if not path.exists()]
-    if missing_dirs:
-        raise FileNotFoundError(
-            "Missing cached raw_metrics directories. Run plot_two_algorithm_comparisons_matplotlib.py once first. "
-            + "; ".join(missing_dirs)
-        )
-
     raw_data = {
         group: load_series(path, GROUPS.get(group))
         for group, path in GROUP_DIRS.items()
@@ -100,30 +105,28 @@ def main() -> None:
     small_font = find_font(26)
     title_font = find_font(38)
 
-    for comparison in COMPARISONS:
-        image = Image.new("RGBA", (FIG_WIDTH, FIG_HEIGHT), (255, 255, 255, 255))
-        draw = ImageDraw.Draw(image)
-        title = comparison["title"] + " (Mean \u00b1 SEM)"
-        title_w, _ = text_size(draw, title, title_font)
-        draw.text(((FIG_WIDTH - title_w) / 2, 32), title, fill=(0, 0, 0), font=title_font)
-        note = "Shaded area: \u00b11 SEM"
-        draw.text((FIG_WIDTH - 390, 42), note, fill=(0, 0, 0), font=small_font)
+    image = Image.new("RGBA", (FIG_WIDTH, FIG_HEIGHT), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    title = COMPARISON["title"]
+    title_w, _ = text_size(draw, title, title_font)
+    draw.text(((FIG_WIDTH - title_w) / 2, 32), title, fill=(0, 0, 0), font=title_font)
+    note = "Shaded area: ±1 SEM"
+    draw.text((FIG_WIDTH - 390, 42), note, fill=(0, 0, 0), font=small_font)
 
-        for metric_id, rect in zip(METRIC_ORDER, PLOT_RECTS):
-            draw_plot(
-                image,
-                rect,
-                metric_id,
-                {group: group_data[group][metric_id] for group in comparison["groups"]},
-                comparison["colors"],
-                font,
-                small_font,
-            )
+    for metric_id, rect in zip(METRIC_ORDER, PLOT_RECTS):
+        draw_plot(
+            image,
+            rect,
+            metric_id,
+            {group: group_data[group][metric_id] for group in COMPARISON["groups"]},
+            COMPARISON["colors"],
+            font,
+            small_font,
+        )
 
-        out_path = OUT_DIR / f"{comparison['name']}_sem.png"
-        image.convert("RGB").save(out_path, quality=95, dpi=(300, 300))
-        print(out_path)
-
+    out_path = OUT_DIR / f"{COMPARISON['name']}.png"
+    image.convert("RGB").save(out_path, quality=95, dpi=(300, 300))
+    print(out_path)
     write_summary(group_data)
 
 

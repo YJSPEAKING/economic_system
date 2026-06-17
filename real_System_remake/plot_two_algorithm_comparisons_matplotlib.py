@@ -23,14 +23,14 @@ TD3_RUNS = [
 ]
 
 GAIL_TD3_RUNS = [
-    "run-20260611_191409-z6r9akkau687teps4qlhu",
-    "run-20260611_222957-znvy698zfqrz1a81fnbgu",
-    "run-20260612_003943-fybyo5u7zhpnzhqxlfgq7",
-    "run-20260612_024959-7c3qf4o108bbi8dvqa9v1",
-    "run-20260612_074153-0yhjd4spum2e0yedvjbf2",
-    "run-20260612_102339-d41qetvzo5js3yvemkmps",
-    "run-20260612_180041-333xdgw1vzwlocfrd2js7",
-    "run-20260612_235915-cfvkp9kcimzdwmvt30dka",
+    "run-20260617_001528-dzqg3otf025d93ab14is8",
+    "run-20260617_024236-xq7h9trakjenqdu0dpv62",
+    "run-20260617_042057-j103cbms9rxw5i3rr1mi2",
+    "run-20260617_060854-pppsc2jn3bfk8kl5c0ryj",
+    "run-20260617_074649-he8eawnf37e0afhejfz4x",
+    "run-20260617_092948-zoblbi9mayxi85o5vagsy",
+    "run-20260617_140302-zghmj0imechyy1bsd9w8j",
+    "run-20260617_161607-7azajx0oxt6k6fengi74d",
 ]
 
 TRANSFORMER_GAIL_TD3_RUNS = [

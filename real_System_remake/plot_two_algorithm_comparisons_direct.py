@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
+from plot_two_algorithm_comparisons_matplotlib import GROUPS
+
 
 BASE_DIR = Path(__file__).resolve().parent
 OUT_DIR = BASE_DIR / "analysis_plots" / "paper_algorithm_comparisons_matplotlib"
@@ -105,9 +107,15 @@ def find_font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def load_series(raw_dir: Path) -> Dict[str, List[dict]]:
+def load_series(raw_dir: Path, run_names: Optional[Sequence[str]] = None) -> Dict[str, List[dict]]:
     by_metric: Dict[str, List[dict]] = {metric_id: [] for metric_id in METRIC_ORDER}
-    for csv_path in sorted(raw_dir.glob("*_metrics.csv")):
+    if run_names is None:
+        csv_paths = sorted(raw_dir.glob("*_metrics.csv"))
+    else:
+        csv_paths = [raw_dir / f"{run_name}_metrics.csv" for run_name in run_names]
+    for csv_path in csv_paths:
+        if not csv_path.exists():
+            continue
         run = ""
         seed = ""
         values_by_metric: Dict[str, Dict[int, float]] = {metric_id: {} for metric_id in METRIC_ORDER}
@@ -325,7 +333,10 @@ def write_summary(group_data: Dict[str, Dict[str, Optional[dict]]]) -> None:
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    raw_data = {group: load_series(path) for group, path in GROUP_DIRS.items()}
+    raw_data = {
+        group: load_series(path, GROUPS.get(group))
+        for group, path in GROUP_DIRS.items()
+    }
     group_data = {
         group: {metric_id: aggregate(raw_data[group][metric_id]) for metric_id in METRIC_ORDER}
         for group in GROUP_DIRS
