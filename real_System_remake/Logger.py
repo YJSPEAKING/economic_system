@@ -8,6 +8,7 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import time
 import shutil
+from statistics import median
 from pandas import DataFrame
 import swanlab
 
@@ -52,7 +53,9 @@ class Logger:
         self.target_translator = {'production1': '生产企业1', 'consumption1': '消费企业1','production2': '生产企业2', 'consumption2': '消费企业2',
                                   'bank1': '银行', 'episode': '回合', 'day':'天数',
                                   'money': '现金',
-                                  'stock': '存货', 'debt':'债务', 'revenue': '收入', 'iDebt':'利息', 'cost': '支出', 'business_profit': '商业利润',
+                                  'stock': '存货', 'debt':'债务', 'revenue': '收入', 'iDebt':'利息', 'should_payback': '待还本金',
+                                  'dscr': '偿债能力', 'dscr_avg': '平均偿债能力',
+                                  'cost': '支出', 'business_profit': '商业利润',
                                   'price': '今日定价','profit':'利润', 'economy_profit':'金融利润', 'next_price':'次日定价', 'WNDF':'决策贷款意愿', 'get_WNDF': '获得贷款',
                                   'total_profit': '总利润', 'total_revenue': '总收入', 'total_cost': '总支出', 'total_idebt': '总利息', 'output': '本回合生产',
                                   'sales': '本回合售出','total_sales':'总售出', 'reward':'奖励','intention_policy_K':'决策意愿_K',
@@ -61,7 +64,7 @@ class Logger:
                                   'intention_policy':'决策意愿', 'get_shop': '获取商品数', 'able_fund':'剩余可用储备金', 'bond': '债券',
                                   'WNDB': '借贷意愿', 'real_WNDB': '实际借贷','total_reward':'累计奖励'}
         # 企业普通属性
-        self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
+        self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'should_payback', 'dscr', 'dscr_avg', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
                             'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'total_idebt', 'output', 'sales','total_sales']
         # 企业字典变量属性
         self.e_dict = {'intention_policy': ['K', 'L'], 'get_shop': ['K', 'L'],'reward':['business','economy'],'loss':['business','economy'],
@@ -385,7 +388,34 @@ class Logger:
                 count += self.data['enterprise']['finish'][target_name]['总利息'][start_at:][i]
         res = count / 100
         swanlab.log({'每百回合/累计收益/银行': res}, step=log_step)
+        self._log_debt_service_coverage_ratio(target_name_list, start_at, start, end, log_step)
         self._log_learning_speed_metrics(day, epi)
+
+    def _log_debt_service_coverage_ratio(self, target_name_list, start_at, start, end, log_step):
+        production_values = []
+        consumption_values = []
+        for target_name in target_name_list:
+            try:
+                target_data = self.data['enterprise']['finish'][target_name]
+                dscr_values = target_data['平均偿债能力'][start_at:]
+            except KeyError:
+                continue
+            values = []
+            for i in range(start, end):
+                values.append(dscr_values[i])
+            if not values:
+                continue
+            if target_name.startswith('生产企业'):
+                production_values.extend(values)
+            elif target_name.startswith('消费企业'):
+                consumption_values.extend(values)
+
+        if production_values:
+            swanlab.log({'每百回合/偿债能力/生产企业': sum(production_values) / len(production_values)}, step=log_step)
+            swanlab.log({'每百回合/偿债能力中位数/生产企业': median(production_values)}, step=log_step)
+        if consumption_values:
+            swanlab.log({'每百回合/偿债能力/消费企业': sum(consumption_values) / len(consumption_values)}, step=log_step)
+            swanlab.log({'每百回合/偿债能力中位数/消费企业': median(consumption_values)}, step=log_step)
 
     def _moving_average(self, values, window):
         if len(values) < window:
@@ -401,6 +431,16 @@ class Logger:
         for i, value in enumerate(ma_values):
             if value >= threshold:
                 return i + window
+        return -1
+
+    def _first_reach_per_100_step(self, day, threshold):
+        total_steps = len(day) // 100
+        for step in range(1, total_steps + 1):
+            start = (step - 1) * 100
+            end = step * 100
+            value = sum(day[start:end]) / 100
+            if value >= threshold:
+                return step
         return -1
 
     def _linear_slope(self, values):
@@ -433,6 +473,8 @@ class Logger:
             '学习速度/历史最佳百回合均值': max(ma100),
             '学习速度/达到80天所需回合': self._first_reach_episode(ma100, 100, 80),
             '学习速度/达到90天所需回合': self._first_reach_episode(ma100, 100, 90),
+            '学习速度/每百回合存活天数达到80天所需step': self._first_reach_per_100_step(day, 80),
+            '学习速度/每百回合存活天数达到90天所需step': self._first_reach_per_100_step(day, 90),
         }
         if len(recent_ma) > 1:
             metrics['学习速度/最近百回合均值斜率'] = self._linear_slope(recent_ma)

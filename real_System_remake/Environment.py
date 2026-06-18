@@ -80,7 +80,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                    notes="online GAIL+TD3 v1.23, paper income curves and standard 100-episode survival average",
+                    notes="online GAIL+TD3 v1.24, paper income curves, split production/consumption DSCR, and per-100 survival threshold steps",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
@@ -360,6 +360,11 @@ class Environment:
         # step 12
         # 银行收回贷款
         for key in self.action_controller['e_execute']:
+            due = self.Enterprise[key].should_payback + self.Enterprise[key].iDebt + 1.0
+            self.Enterprise[key].dscr = self.Enterprise[key].money / due
+            self.Enterprise[key].dscr_sum += self.Enterprise[key].dscr
+            self.Enterprise[key].dscr_count += 1
+            self.Enterprise[key].dscr_avg = self.Enterprise[key].dscr_sum / self.Enterprise[key].dscr_count
             self.Bank[b].deal_payback(name=key, payback=self.Enterprise[key].turn_back_money())
 
         # 每日结束清算

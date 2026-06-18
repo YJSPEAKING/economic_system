@@ -58,6 +58,9 @@ METRIC_ALIASES = {
         "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u94f6\u884c",
         "\u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u5956\u52b1/\u94f6\u884c",
     ],
+    "dscr": [
+        "\u6bcf\u767e\u56de\u5408/\u507f\u503a\u80fd\u529b/\u4f01\u4e1a\u5e73\u5747",
+    ],
 }
 
 METRIC_BY_KEY = {
@@ -66,13 +69,14 @@ METRIC_BY_KEY = {
     for key in aliases
 }
 
-METRIC_ORDER = ["survival", "production", "consumption", "bank"]
+METRIC_ORDER = ["survival", "production", "consumption", "bank", "dscr"]
 
 METRIC_TITLES = {
     "survival": "(a) Survival Days",
     "production": "(b) \u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u751f\u4ea7\u4f01\u4e1a",
     "consumption": "(c) \u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u6d88\u8d39\u4f01\u4e1a",
     "bank": "(d) \u6bcf\u767e\u56de\u5408/\u7d2f\u8ba1\u6536\u76ca/\u94f6\u884c",
+    "dscr": "\u6bcf\u767e\u56de\u5408/\u507f\u503a\u80fd\u529b/\u4f01\u4e1a\u5e73\u5747",
 }
 
 Y_LABELS = {
@@ -80,6 +84,7 @@ Y_LABELS = {
     "production": "Income",
     "consumption": "Income",
     "bank": "Income",
+    "dscr": "DSCR",
 }
 
 GROUPS = {

@@ -24,6 +24,10 @@ class Enterprise:
         self.revenue = 0.0                   # R    收入
         self.should_payback = 0.0            # 当日待还款
         self.iDebt = 0.0                     # iD   本回合待偿还利息
+        self.dscr = 0.0                      # DSCR 偿债能力：还款前现金 / 当日应还本息
+        self.dscr_sum = 0.0                  # 本回合逐日 DSCR 之和
+        self.dscr_count = 0                  # 本回合 DSCR 记录天数
+        self.dscr_avg = 0.0                  # 本回合平均 DSCR
         self.last_cost = 0.0
         self.cost = 0.0                      # C    成本
         self.economy_profit = 0.0            # 金融利润 为当日新借贷-偿还本金-偿还利息
@@ -97,6 +101,10 @@ class Enterprise:
         self.revenue = 0.0  # R    收入
         self.should_payback = 0.0  # 当日待还款
         self.iDebt = 0.0  # iD   利息
+        self.dscr = 0.0  # DSCR 偿债能力
+        self.dscr_sum = 0.0
+        self.dscr_count = 0
+        self.dscr_avg = 0.0
         self.last_cost = 0.0
         self.cost = 0.0  # C    成本
         self.economy_profit = 0.0  # 金融利润
