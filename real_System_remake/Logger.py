@@ -8,6 +8,7 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import time
 import shutil
+from statistics import median
 from pandas import DataFrame
 import swanlab
 
@@ -55,6 +56,7 @@ class Logger:
                                   'stock': '存货', 'debt':'债务', 'revenue': '收入', 'iDebt':'利息', 'cost': '支出', 'business_profit': '商业利润',
                                   'price': '今日定价','profit':'利润', 'economy_profit':'金融利润', 'next_price':'次日定价', 'WNDF':'决策贷款意愿', 'get_WNDF': '获得贷款',
                                   'total_profit': '总利润', 'total_revenue': '总收入', 'total_cost': '总支出', 'output': '本回合生产',
+                                  'dscr': '偿债能力', 'dscr_avg': '平均偿债能力',
                                   'sales': '本回合售出','total_sales':'总售出', 'reward':'奖励','intention_policy_K':'决策意愿_K',
                                   'intention_policy_L': '决策意愿_L','WNDB_production1':'借贷意愿_生产企业1','WNDB_consumption1':'借贷意愿_消费企业1',
                                   'WNDB_production2': '借贷意愿_生产企业2', 'WNDB_consumption2': '借贷意愿_消费企业2',
@@ -62,7 +64,7 @@ class Logger:
                                   'WNDB': '借贷意愿', 'real_WNDB': '实际借贷','total_reward':'累计奖励'}
         # 企业普通属性
         self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
-                            'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'output', 'sales','total_sales']
+                            'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'dscr', 'dscr_avg', 'output', 'sales','total_sales']
         # 企业字典变量属性
         self.e_dict = {'intention_policy': ['K', 'L'], 'get_shop': ['K', 'L'],'reward':['business','economy'],'loss':['business','economy'],
                        'total_reward':['business','economy']}
@@ -359,6 +361,7 @@ class Logger:
             '生产企业1': '每百回合/累计收益/生产企业',
             '消费企业1': '每百回合/累计收益/消费企业',
         }
+        target_name_list = ['生产企业1', '消费企业1', '生产企业2', '消费企业2']
         for target_name, log_name in income_targets.items():
             try:
                 total_profit = self.data['enterprise']['finish'][target_name]['总利润'][start_at:]
@@ -387,7 +390,44 @@ class Logger:
                 swanlab.log(metrics)
             else:
                 swanlab.log(metrics, step=log_step)
+        self._log_debt_service_coverage_ratio(target_name_list, start_at, start, end, log_step)
         self._log_learning_speed_metrics(day, epi)
+
+    def _log_debt_service_coverage_ratio(self, target_name_list, start_at, start, end, log_step):
+        production_values = []
+        consumption_values = []
+
+        for target_name in target_name_list:
+            try:
+                target_data = self.data['enterprise']['finish'][target_name]
+                dscr_values = target_data['平均偿债能力'][start_at:]
+                dscr_end = min(end, len(dscr_values))
+                values = [dscr_values[i] for i in range(start, dscr_end)]
+
+                if target_name.startswith('生产企业'):
+                    production_values.extend(values)
+                elif target_name.startswith('消费企业'):
+                    consumption_values.extend(values)
+            except (KeyError, IndexError):
+                pass
+
+        metrics = {}
+        top_n = 70
+        if production_values:
+            top_production_values = sorted(production_values, reverse=True)[:top_n]
+            metrics['每百回合/偿债能力/生产企业'] = sum(top_production_values) / len(top_production_values)
+            metrics['每百回合/偿债能力中位数/生产企业'] = median(top_production_values)
+
+        if consumption_values:
+            top_consumption_values = sorted(consumption_values, reverse=True)[:top_n]
+            metrics['每百回合/偿债能力/消费企业'] = sum(top_consumption_values) / len(top_consumption_values)
+            metrics['每百回合/偿债能力中位数/消费企业'] = median(top_consumption_values)
+
+        if metrics:
+            if log_step is None:
+                swanlab.log(metrics)
+            else:
+                swanlab.log(metrics, step=log_step)
 
     def _moving_average(self, values, window):
         if len(values) < window:

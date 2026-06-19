@@ -36,6 +36,10 @@ class Enterprise:
         self.total_cost = 0.0                # 累计成本和
         self.total_revenue = 0.0             # 累计收入和
         self.total_idebt = 0.0               # 累计利息和
+        self.dscr = 0.0
+        self.dscr_sum = 0.0
+        self.dscr_count = 0
+        self.dscr_avg = 0.0
         self.output = 0.0                    # 当前回合产量
         self.sales = 0.0                     # 当前回合销量
         self.intention_policy = {}           # 当日决策购买产品意愿   类型为字典，放入购买产品如{'K':5.5,'L':6.6}
@@ -109,6 +113,10 @@ class Enterprise:
         self.total_cost = 0.0  # 累计成本和
         self.total_revenue = 0.0  # 累计收入和
         self.total_idebt = 0.0  # 累计利息和
+        self.dscr = 0.0
+        self.dscr_sum = 0.0
+        self.dscr_count = 0
+        self.dscr_avg = 0.0
         self.output = 0.0  # 当前回合产量
         self.sales = 0.0  # 当前回合销量
         self.intention_policy = {}  # 当日决策购买产品意愿   类型为字典，放入购买产品如{'K':5.5,'L':6.6}
