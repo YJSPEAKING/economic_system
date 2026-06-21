@@ -17,6 +17,7 @@ import os
 
 third_market_price = 100  # 环境中第三方市场的价格是固定100
 enterprise_price = 8  # 企业的初始价格是8
+DSCR_DUE_EPSILON = 1e-6
 
 swanlab_config = {
     'bank_ddpg_config': {
@@ -80,7 +81,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                    notes="online GAIL+TD3 v1.24, paper income curves, split production/consumption DSCR, and per-100 survival threshold steps",
+                    notes="online GAIL+TD3 v1.25, DSCR skips first 5 days and due-free days, final seed checkpoints saved",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
@@ -360,11 +361,12 @@ class Environment:
         # step 12
         # 银行收回贷款
         for key in self.action_controller['e_execute']:
-            due = self.Enterprise[key].should_payback + self.Enterprise[key].iDebt + 1.0
-            self.Enterprise[key].dscr = self.Enterprise[key].money / due
-            self.Enterprise[key].dscr_sum += self.Enterprise[key].dscr
-            self.Enterprise[key].dscr_count += 1
-            self.Enterprise[key].dscr_avg = self.Enterprise[key].dscr_sum / self.Enterprise[key].dscr_count
+            due = self.Enterprise[key].should_payback + self.Enterprise[key].iDebt
+            if self.day >= self.Bank[b].debt_time and due > DSCR_DUE_EPSILON:
+                self.Enterprise[key].dscr = self.Enterprise[key].money / due
+                self.Enterprise[key].dscr_sum += self.Enterprise[key].dscr
+                self.Enterprise[key].dscr_count += 1
+                self.Enterprise[key].dscr_avg = self.Enterprise[key].dscr_sum / self.Enterprise[key].dscr_count
             self.Bank[b].deal_payback(name=key, payback=self.Enterprise[key].turn_back_money())
 
         # 每日结束清算

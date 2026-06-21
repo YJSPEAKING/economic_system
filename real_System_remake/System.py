@@ -29,6 +29,20 @@ import torch
 import torch.nn as nn
 import swanlab as wandb
 import numpy as np
+import json
+
+
+CHECKPOINT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints", "final_weights")
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 def seed_everything(seed=42):
     random.seed(seed)
@@ -188,6 +202,74 @@ class System:
         for key in self.execute:
             self.Agent[key] = None
 
+    def save_final_checkpoints(self):
+        checkpoint_dir = os.path.join(CHECKPOINT_ROOT, f"seed_{self.seed}")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        saved_files = {}
+
+        for agent_name in ("production1", "consumption1"):
+            agent = self.Agent.get(agent_name)
+            td3_agent = getattr(agent, "enterprise", None)
+            if td3_agent is None:
+                continue
+            actor_path = os.path.join(checkpoint_dir, f"{agent_name}_actor.pth")
+            critic_path = os.path.join(checkpoint_dir, f"{agent_name}_critic.pth")
+            torch.save(td3_agent.actor.state_dict(), actor_path)
+            torch.save(td3_agent.critic.state_dict(), critic_path)
+            saved_files[f"{agent_name}_actor"] = actor_path
+            saved_files[f"{agent_name}_critic"] = critic_path
+
+        bank_agent = self.Agent.get("bank1")
+        td3_bank = getattr(bank_agent, "bank", None)
+        if td3_bank is not None:
+            actor_path = os.path.join(checkpoint_dir, "bank1_actor.pth")
+            critic_path = os.path.join(checkpoint_dir, "bank1_critic.pth")
+            torch.save(td3_bank.actor.state_dict(), actor_path)
+            torch.save(td3_bank.critic.state_dict(), critic_path)
+            saved_files["bank1_actor"] = actor_path
+            saved_files["bank1_critic"] = critic_path
+
+        production_agent = self.Agent.get("production1")
+        if production_agent is not None and hasattr(production_agent, "gail_disc"):
+            disc_path = os.path.join(checkpoint_dir, "discriminator.pth")
+            torch.save(production_agent.gail_disc.state_dict(), disc_path)
+            saved_files["discriminator"] = disc_path
+
+        obs_keys = ("obs_mean", "obs_var", "act_mean", "act_var")
+        if production_agent is not None and all(hasattr(production_agent, key) for key in obs_keys):
+            obs_path = os.path.join(checkpoint_dir, "obs_rms_params.pth")
+            torch.save(
+                {
+                    "mean": production_agent.obs_mean.detach().cpu(),
+                    "var": production_agent.obs_var.detach().cpu(),
+                    "act_mean": production_agent.act_mean.detach().cpu(),
+                    "act_var": production_agent.act_var.detach().cpu(),
+                },
+                obs_path,
+            )
+            saved_files["obs_rms_params"] = obs_path
+
+        config_path = os.path.join(checkpoint_dir, "config.json")
+        saved_files["config"] = config_path
+        config_payload = {
+            "seed": self.seed,
+            "episode": getattr(self.env, "episode", None),
+            "total_sim_days": self.epiday,
+            "max_episodes": max_episodes,
+            "min_logged_episode": min_logged_episode,
+            "max_total_sim_days": max_total_sim_days,
+            "enterprise_ddpg_config": enterprise_ddpg_config.__dict__,
+            "bank_ddpg_config": bank_ddpg_config.__dict__,
+            "enterprise_config": enterprise_config.__dict__,
+            "bank_config": bank_config.__dict__,
+            "swanlab_config": environment_module.swanlab_config,
+            "saved_files": saved_files,
+        }
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(_json_safe(config_payload), f, ensure_ascii=False, indent=2)
+        print(f"[Checkpoint] saved final weights for seed {self.seed}: {checkpoint_dir}")
+        return checkpoint_dir
+
     def run(self):
 
         for episode in range(max_episodes):
@@ -318,6 +400,7 @@ class System:
                 last_action = action
                 last_reward_pro = reward_pro
 
+        self.save_final_checkpoints()
         # self.env.finish()
 
 

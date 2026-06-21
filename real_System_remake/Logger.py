@@ -54,7 +54,7 @@ class Logger:
                                   'bank1': '银行', 'episode': '回合', 'day':'天数',
                                   'money': '现金',
                                   'stock': '存货', 'debt':'债务', 'revenue': '收入', 'iDebt':'利息', 'should_payback': '待还本金',
-                                  'dscr': '偿债能力', 'dscr_avg': '平均偿债能力',
+                                  'dscr': '偿债能力', 'dscr_avg': '平均偿债能力', 'dscr_count': '偿债能力统计天数',
                                   'cost': '支出', 'business_profit': '商业利润',
                                   'price': '今日定价','profit':'利润', 'economy_profit':'金融利润', 'next_price':'次日定价', 'WNDF':'决策贷款意愿', 'get_WNDF': '获得贷款',
                                   'total_profit': '总利润', 'total_revenue': '总收入', 'total_cost': '总支出', 'total_idebt': '总利息', 'output': '本回合生产',
@@ -64,7 +64,7 @@ class Logger:
                                   'intention_policy':'决策意愿', 'get_shop': '获取商品数', 'able_fund':'剩余可用储备金', 'bond': '债券',
                                   'WNDB': '借贷意愿', 'real_WNDB': '实际借贷','total_reward':'累计奖励'}
         # 企业普通属性
-        self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'should_payback', 'dscr', 'dscr_avg', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
+        self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'should_payback', 'dscr', 'dscr_avg', 'dscr_count', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
                             'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'total_idebt', 'output', 'sales','total_sales']
         # 企业字典变量属性
         self.e_dict = {'intention_policy': ['K', 'L'], 'get_shop': ['K', 'L'],'reward':['business','economy'],'loss':['business','economy'],
@@ -398,11 +398,13 @@ class Logger:
             try:
                 target_data = self.data['enterprise']['finish'][target_name]
                 dscr_values = target_data['平均偿债能力'][start_at:]
+                dscr_counts = target_data['偿债能力统计天数'][start_at:]
             except KeyError:
                 continue
             values = []
             for i in range(start, end):
-                values.append(dscr_values[i])
+                if dscr_counts[i] > 0:
+                    values.append(dscr_values[i])
             if not values:
                 continue
             if target_name.startswith('生产企业'):
