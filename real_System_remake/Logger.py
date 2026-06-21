@@ -8,6 +8,8 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import time
 import shutil
+import csv
+import numbers
 from statistics import median
 from pandas import DataFrame
 import swanlab
@@ -49,6 +51,14 @@ class Logger:
         self.data['bank']['runtime'] = {}  # 用于记录运行时数据 存入csv用
         self.loss = {} # 用于记录loss
         self.action_data = {}
+        self.trajectory_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'trajectory_logs',
+            self.name
+        )
+        self._trajectory_files = {}
+        self._trajectory_writers = {}
+        self._trajectory_counts = {}
         # 主体名称翻译
         self.target_translator = {'production1': '生产企业1', 'consumption1': '消费企业1','production2': '生产企业2', 'consumption2': '消费企业2',
                                   'bank1': '银行', 'episode': '回合', 'day':'天数',
@@ -163,6 +173,96 @@ class Logger:
             self.action_data[name][action_detail[i]].append(action[i])
         # if episode % 10 == 0:
         #     print(name + ' 决策为 ' + str(action_detail) + " : " + str(action))
+
+    def _to_csv_scalar(self, value):
+        if isinstance(value, numbers.Number) or isinstance(value, bool) or isinstance(value, str):
+            return value
+        if hasattr(value, 'item'):
+            try:
+                scalar = value.item()
+                if isinstance(scalar, numbers.Number) or isinstance(scalar, bool) or isinstance(scalar, str):
+                    return scalar
+            except (ValueError, TypeError, RuntimeError):
+                pass
+        return None
+
+    def _as_list(self, value):
+        if value is None:
+            return []
+        if hasattr(value, 'detach'):
+            value = value.detach().cpu().numpy()
+        if hasattr(value, 'tolist'):
+            value = value.tolist()
+        if isinstance(value, tuple):
+            value = list(value)
+        if isinstance(value, list):
+            return value
+        return [value]
+
+    def _flatten_dict_scalars(self, prefix, data, row):
+        if not isinstance(data, dict):
+            return
+        for key, value in data.items():
+            scalar = self._to_csv_scalar(value)
+            if scalar is not None:
+                row[f'{prefix}_{key}'] = scalar
+
+    def _build_trajectory_row(self, episode, day, target, state, action, agent_type, reward=None, done=False):
+        row = {
+            'episode': episode,
+            'day': day,
+            'agent_name': target.name,
+            'agent_type': agent_type,
+            'done': int(bool(done)),
+        }
+
+        for i, value in enumerate(self._as_list(state)):
+            scalar = self._to_csv_scalar(value)
+            row[f'state_{i}'] = scalar if scalar is not None else value
+
+        for i, value in enumerate(self._as_list(action)):
+            scalar = self._to_csv_scalar(value)
+            row[f'action_{i}'] = scalar if scalar is not None else value
+
+        self._flatten_dict_scalars('reward', reward, row)
+
+        for key, value in target.__dict__.items():
+            if key in ('config', 'action_function', 'action_functiontion', 'observation', 'state'):
+                continue
+            scalar = self._to_csv_scalar(value)
+            if scalar is not None:
+                row[f'raw_{key}'] = scalar
+            elif isinstance(value, dict):
+                self._flatten_dict_scalars(f'raw_{key}', value, row)
+        return row
+
+    def receive_daily_trajectory(self, episode, day, target, state, action, agent_type, reward=None, done=False):
+        os.makedirs(self.trajectory_dir, exist_ok=True)
+        target_name = target.name
+        row = self._build_trajectory_row(episode, day, target, state, action, agent_type, reward, done)
+
+        if target_name not in self._trajectory_writers:
+            csv_path = os.path.join(self.trajectory_dir, f'{target_name}_daily_trajectory.csv')
+            csv_file = open(csv_path, 'w', newline='', encoding='utf-8-sig')
+            fieldnames = list(row.keys())
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            self._trajectory_files[target_name] = csv_file
+            self._trajectory_writers[target_name] = writer
+            self._trajectory_counts[target_name] = 0
+
+        self._trajectory_writers[target_name].writerow(row)
+        self._trajectory_counts[target_name] += 1
+        if self._trajectory_counts[target_name] % 1000 == 0:
+            self._trajectory_files[target_name].flush()
+
+    def close_trajectory_files(self):
+        for csv_file in self._trajectory_files.values():
+            csv_file.flush()
+            csv_file.close()
+        self._trajectory_files = {}
+        self._trajectory_writers = {}
+        self._trajectory_counts = {}
 
 
     def clear_runtime_data(self):

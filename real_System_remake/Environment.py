@@ -81,7 +81,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                    notes="online GAIL+TD3 v1.25, DSCR skips first 5 days and due-free days, final seed checkpoints saved",
+                    notes="online GAIL+TD3 v1.26, daily trajectory CSV, valid DSCR days, final seed checkpoints saved",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
@@ -427,6 +427,30 @@ class Environment:
                 reward[key] = self.Bank[key].get_fail_reward(self.day)
             self.reward = reward
 
+        if self.day > 0:
+            for key in self.action_controller['e_execute']:
+                self.logger.receive_daily_trajectory(
+                    episode=self.episode,
+                    day=self.day,
+                    target=self.Enterprise[key],
+                    state=self.state.get(key),
+                    action=self.action.get(key),
+                    agent_type='enterprise',
+                    reward=self.reward.get(key),
+                    done=self.is_end
+                )
+            for key in self.action_controller['b_execute']:
+                self.logger.receive_daily_trajectory(
+                    episode=self.episode,
+                    day=self.day,
+                    target=self.Bank[key],
+                    state=self.state.get(key),
+                    action=self.action.get(key),
+                    agent_type='bank',
+                    reward=self.reward.get(key),
+                    done=self.is_end
+                )
+
         # 输出数据
         if self.episode % 10 == 0:
             self.logger.output_to_txt(str(self))
@@ -484,6 +508,7 @@ class Environment:
         # self.logger.show_all()
         # print("logger.tocsv")
         # self.logger.to_csv()
+        self.logger.close_trajectory_files()
         if self.use_swanlab:
             swanlab.finish()
 
