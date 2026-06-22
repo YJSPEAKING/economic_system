@@ -14,6 +14,7 @@ import swanlab
 import time
 import pandas as pd
 import os
+import csv
 
 third_market_price = 100  # 环境中第三方市场的价格是固定100
 enterprise_price = 8  # 企业的初始价格是8
@@ -61,7 +62,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                         notes="transformerv1.8, income_display, top70_survival_step8, dscr_top70, min6000_stop",
+                         notes="transformerv1.9, dscr_valid_due, final_weights, daily_trajectory_csv, income_display, top70_survival_step8, min6000_stop",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了
@@ -78,6 +79,10 @@ class Environment:
         }
         # === 【新增】初始化专家数据缓存 ===
         self.expert_data_buffer = {}
+        self.trajectory_logging_enabled = False
+        self.trajectory_log_dir = None
+        self.trajectory_written_files = set()
+        self.trajectory_fieldnames = {}
 
     def get_day(self):
         return self.day
@@ -144,6 +149,14 @@ class Environment:
 
         for key in self.action_controller['e_execute']:
             self.market.subscribe(self.Enterprise[key])
+
+    def init_trajectory_logging(self, seed):
+        base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trajectory_logs')
+        self.trajectory_log_dir = os.path.join(base_dir, f'seed_{int(seed)}')
+        os.makedirs(self.trajectory_log_dir, exist_ok=True)
+        self.trajectory_logging_enabled = True
+        self.trajectory_written_files = set()
+        self.trajectory_fieldnames = {}
 
     def reset(self):
         """
@@ -341,11 +354,14 @@ class Environment:
         # step 12
         # 银行收回贷款
         for key in self.action_controller['e_execute']:
-            due = self.Enterprise[key].should_payback + self.Enterprise[key].iDebt + 1.0
-            self.Enterprise[key].dscr = self.Enterprise[key].money / due
-            self.Enterprise[key].dscr_sum += self.Enterprise[key].dscr
-            self.Enterprise[key].dscr_count += 1
-            self.Enterprise[key].dscr_avg = self.Enterprise[key].dscr_sum / self.Enterprise[key].dscr_count
+            due = self.Enterprise[key].should_payback + self.Enterprise[key].iDebt
+            if self.day >= self.Bank[b].debt_time and due > 1e-6:
+                self.Enterprise[key].dscr = self.Enterprise[key].money / due
+                self.Enterprise[key].dscr_sum += self.Enterprise[key].dscr
+                self.Enterprise[key].dscr_count += 1
+                self.Enterprise[key].dscr_avg = (
+                    self.Enterprise[key].dscr_sum / self.Enterprise[key].dscr_count
+                )
             self.Bank[b].deal_payback(name=key, payback=self.Enterprise[key].turn_back_money())
 
         # 每日结束清算
@@ -412,6 +428,130 @@ class Environment:
 
             # print(self)
 
+    def _clean_csv_value(self, value):
+        if value is None:
+            return ''
+        if isinstance(value, bool):
+            return int(value)
+        if hasattr(value, 'item'):
+            try:
+                value = value.item()
+            except ValueError:
+                pass
+        return value
+
+    def _as_list(self, values):
+        if values is None:
+            return []
+        if hasattr(values, 'tolist'):
+            values = values.tolist()
+        if isinstance(values, (list, tuple)):
+            return list(values)
+        return [values]
+
+    def _add_sequence_fields(self, row, prefix, values):
+        for i, value in enumerate(self._as_list(values)):
+            row[f'{prefix}_{i}'] = self._clean_csv_value(value)
+
+    def _add_scalar_raw_fields(self, row, target, fields):
+        for field in fields:
+            row[f'raw_{field}'] = self._clean_csv_value(getattr(target, field, ''))
+
+    def _add_dict_raw_fields(self, row, target, dict_name, keys):
+        data = getattr(target, dict_name, {}) or {}
+        for key in keys:
+            row[f'raw_{dict_name}_{key}'] = self._clean_csv_value(data.get(key, ''))
+
+    def _trajectory_file_path(self, agent_name):
+        filenames = {
+            'production1': 'production1_daily_trajectory.csv',
+            'consumption1': 'consumption1_daily_trajectory.csv',
+            'bank1': 'bank1_daily_trajectory.csv',
+        }
+        filename = filenames.get(agent_name)
+        if filename is None:
+            return None
+        return os.path.join(self.trajectory_log_dir, filename)
+
+    def _write_trajectory_row(self, agent_name, row):
+        path = self._trajectory_file_path(agent_name)
+        if path is None:
+            return
+        if agent_name not in self.trajectory_fieldnames:
+            self.trajectory_fieldnames[agent_name] = list(row.keys())
+        fieldnames = self.trajectory_fieldnames[agent_name]
+        mode = 'a' if path in self.trajectory_written_files else 'w'
+        with open(path, mode, newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+            if path not in self.trajectory_written_files:
+                writer.writeheader()
+                self.trajectory_written_files.add(path)
+            writer.writerow(row)
+
+    def _build_enterprise_trajectory_row(self, name, state_snapshot, action_snapshot, reward_snapshot, done):
+        enterprise = self.Enterprise[name]
+        row = {
+            'episode': self.episode,
+            'day': self.day,
+            'agent_name': name,
+            'agent_type': 'enterprise',
+            'done': int(done),
+        }
+        self._add_sequence_fields(row, 'state', state_snapshot.get(name))
+        self._add_sequence_fields(row, 'action', action_snapshot.get(name))
+        for key, value in reward_snapshot.get(name, {}).items():
+            row[f'reward_{key}'] = self._clean_csv_value(value)
+        self._add_scalar_raw_fields(row, enterprise, [
+            'money', 'stock', 'debt', 'revenue', 'should_payback', 'iDebt',
+            'dscr', 'dscr_sum', 'dscr_count', 'dscr_avg', 'last_cost', 'cost',
+            'economy_profit', 'business_profit', 'price', 'next_price', 'WNDF',
+            'get_WNDF', 'total_profit', 'total_cost', 'total_revenue',
+            'total_idebt', 'output', 'sales', 'is_fall', 'last_output',
+            'total_sales'
+        ])
+        for dict_name in ['intention_policy', 'real_intention', 'get_shop']:
+            self._add_dict_raw_fields(row, enterprise, dict_name, ['K', 'L'])
+        for dict_name in ['reward', 'loss', 'total_reward']:
+            self._add_dict_raw_fields(row, enterprise, dict_name, ['business', 'economy'])
+        return row
+
+    def _build_bank_trajectory_row(self, name, state_snapshot, action_snapshot, reward_snapshot, done):
+        bank = self.Bank[name]
+        row = {
+            'episode': self.episode,
+            'day': self.day,
+            'agent_name': name,
+            'agent_type': 'bank',
+            'done': int(done),
+        }
+        self._add_sequence_fields(row, 'state', state_snapshot.get(name))
+        self._add_sequence_fields(row, 'action', action_snapshot.get(name))
+        for key, value in reward_snapshot.get(name, {}).items():
+            row[f'reward_{key}'] = self._clean_csv_value(value)
+        self._add_scalar_raw_fields(row, bank, [
+            'money', 'profit', 'total_profit', 'able_fund', 'debt_time',
+            'debet_i', 'fund', 'fund_rate', 'fund_increase', 'step'
+        ])
+        for dict_name in ['debt', 'bond', 'should_payback', 'WNDB', 'real_WNDB']:
+            self._add_dict_raw_fields(row, bank, dict_name, ['production1', 'consumption1'])
+        for dict_name in ['loss', 'reward', 'total_reward']:
+            self._add_dict_raw_fields(row, bank, dict_name, ['WNDB'])
+        return row
+
+    def save_daily_trajectory(self, state_snapshot, action_snapshot, reward_snapshot, done):
+        if not self.trajectory_logging_enabled or self.day <= 0:
+            return
+        for key in self.action_controller['e_execute']:
+            self._write_trajectory_row(
+                key,
+                self._build_enterprise_trajectory_row(key, state_snapshot, action_snapshot, reward_snapshot, done)
+            )
+        for key in self.action_controller['b_execute']:
+            self._write_trajectory_row(
+                key,
+                self._build_bank_trajectory_row(key, state_snapshot, action_snapshot, reward_snapshot, done)
+            )
+
     def save_expert_csv(self):
         for agent_name, data in self.expert_data_buffer.items():
             if len(data) == 0:
@@ -432,8 +572,9 @@ class Environment:
 
     # 输入为{主体名字str:[]list}
     # 如：{'consumer':[1,2,3,...,n],'producer':[2,2,3,..,n],'bank1':[1,2,3,...,m]}
-    def step(self, action: dict):  # 前面动作决策做完了，这里得把决策放进环境里
+    def step(self, action: dict, actor_state: dict = None):  # 前面动作决策做完了，这里得把决策放进环境里
         b = self.action_controller['b_execute'][0]
+        state_snapshot = copy.deepcopy(actor_state if actor_state is not None else self.state)
         self.action = action
         if self.day > 0:
             for key in self.action_controller['e_execute']:
@@ -448,6 +589,8 @@ class Environment:
                 self.Bank[b].set_action(target=self.b_action[i], action=action[b][i])  # 设置银行决策动作
             self.logger.receive_action(name=b, action=action[b], action_detail=self.b_action, episode=self.episode)
         self.run_after_action()
+        done_for_record = self.is_end or (self.day + 1 == self.lim_day - 1)
+        self.save_daily_trajectory(state_snapshot, copy.deepcopy(action), copy.deepcopy(self.reward), done_for_record)
         self.run_before_action()
         if self.day == self.lim_day - 1:
             self.is_end = True

@@ -1,6 +1,7 @@
 ﻿import os
 import sys
 import io
+import json
 
 os.environ["PYTHONUTF8"] = "1"
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -172,6 +173,7 @@ class System:
         self.env.add_enterprise_thirdmarket(name='consumption_thirdMarket', output_name='L', price=100)
 
         self.env.init()
+        self.env.init_trajectory_logging(self.seed)
         self.epiday = 0
         self.e_execute = self.env.get_enterprise_execute()
         self.b_execute = self.env.get_bank_execute()
@@ -179,6 +181,94 @@ class System:
         self.Agent = {}
         for key in self.execute:
             self.Agent[key] = None
+
+    def _json_safe(self, value):
+        if isinstance(value, dict):
+            return {str(key): self._json_safe(val) for key, val in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [self._json_safe(item) for item in value]
+        if isinstance(value, (str, int, bool)) or value is None:
+            return value
+        if isinstance(value, float):
+            if np.isinf(value):
+                return 'inf' if value > 0 else '-inf'
+            if np.isnan(value):
+                return 'nan'
+            return value
+        if hasattr(value, 'item'):
+            try:
+                return self._json_safe(value.item())
+            except ValueError:
+                pass
+        if callable(value):
+            return getattr(value, '__name__', str(value))
+        return str(value)
+
+    def _save_agent_weights(self, checkpoint_dir, saved_files, agent_name, agent_wrapper, td3_attr):
+        td3_agent = getattr(agent_wrapper, td3_attr, None)
+        if td3_agent is None:
+            return
+
+        actor_path = os.path.join(checkpoint_dir, f'{agent_name}_actor.pth')
+        critic_path = os.path.join(checkpoint_dir, f'{agent_name}_critic.pth')
+        torch.save(td3_agent.actor.state_dict(), actor_path)
+        torch.save(td3_agent.critic.state_dict(), critic_path)
+        saved_files[f'{agent_name}_actor'] = actor_path
+        saved_files[f'{agent_name}_critic'] = critic_path
+
+    def save_final_checkpoints(self):
+        checkpoint_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'checkpoints',
+            'final_weights',
+            f'seed_{self.seed}'
+        )
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        saved_files = {}
+
+        for agent_name in ['production1', 'consumption1']:
+            if agent_name in self.Agent and self.Agent[agent_name] is not None:
+                self._save_agent_weights(checkpoint_dir, saved_files, agent_name, self.Agent[agent_name], 'enterprise')
+
+        if 'bank1' in self.Agent and self.Agent['bank1'] is not None:
+            self._save_agent_weights(checkpoint_dir, saved_files, 'bank1', self.Agent['bank1'], 'bank')
+
+        production_agent = self.Agent.get('production1')
+        if production_agent is not None and hasattr(production_agent, 'gail_disc'):
+            discriminator_path = os.path.join(checkpoint_dir, 'discriminator.pth')
+            torch.save(production_agent.gail_disc.state_dict(), discriminator_path)
+            saved_files['discriminator'] = discriminator_path
+
+            if all(hasattr(production_agent, attr) for attr in ['obs_mean', 'obs_var', 'act_mean', 'act_var']):
+                obs_rms_path = os.path.join(checkpoint_dir, 'obs_rms_params.pth')
+                torch.save({
+                    'mean': production_agent.obs_mean,
+                    'var': production_agent.obs_var,
+                    'act_mean': production_agent.act_mean,
+                    'act_var': production_agent.act_var,
+                }, obs_rms_path)
+                saved_files['obs_rms_params'] = obs_rms_path
+
+        config_path = os.path.join(checkpoint_dir, 'config.json')
+        saved_files['config'] = config_path
+        config_payload = {
+            'seed': self.seed,
+            'training_end_episode': getattr(self.env, 'episode', None),
+            'total_sim_days': self.epiday,
+            'enterprise_td3_config': self._json_safe(enterprise_ddpg_config.__dict__),
+            'bank_td3_config': self._json_safe(bank_ddpg_config.__dict__),
+            'enterprise_environment_config': self._json_safe({
+                'base_config': enterprise_config.__dict__,
+                'enterprise_add_list': enterprise_add_list,
+            }),
+            'bank_environment_config': self._json_safe(bank_config.__dict__),
+            'swanlab_config': self._json_safe(environment_module.swanlab_config),
+            'saved_files': self._json_safe(saved_files),
+        }
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config_payload, f, ensure_ascii=False, indent=2)
+        print(f"[Final Checkpoint] saved seed {self.seed} to {checkpoint_dir}")
+        return saved_files
 
     def run(self):
 
@@ -209,17 +299,24 @@ class System:
             new_ep = True
             while True:
                 action = {}
+                actor_state_log = {}
                 reward_pro = {}
                 # TD3
                 for target_key in self.e_execute:
                     action[target_key] = self.Agent[target_key].run_enterprise(state[target_key], new_ep)
+                    actor_state_log[target_key] = copy.deepcopy(
+                        getattr(self.Agent[target_key], 'last_actor_state', state[target_key])
+                    )
                 for target_key in self.b_execute:
                     action[target_key] = self.Agent[target_key].run_bank(state[target_key], new_ep)
+                    actor_state_log[target_key] = copy.deepcopy(
+                        getattr(self.Agent[target_key], 'last_actor_state', state[target_key])
+                    )
 
                 new_ep = False
                 self.epiday = self.epiday + 1
 
-                self.env.step(action)
+                self.env.step(action, actor_state=actor_state_log)
                 next_state, reward, done = self.env.observe()
 
                 # done的情况下，因为已知state 和 state_，reward为破产惩罚，处理逻辑不需要时序错峰
@@ -313,6 +410,7 @@ class System:
                 last_action = action
                 last_reward_pro = reward_pro
 
+        self.save_final_checkpoints()
         # self.env.finish()
 
 

@@ -53,18 +53,20 @@ class Logger:
         self.target_translator = {'production1': '生产企业1', 'consumption1': '消费企业1','production2': '生产企业2', 'consumption2': '消费企业2',
                                   'bank1': '银行', 'episode': '回合', 'day':'天数',
                                   'money': '现金',
-                                  'stock': '存货', 'debt':'债务', 'revenue': '收入', 'iDebt':'利息', 'cost': '支出', 'business_profit': '商业利润',
+                                  'stock': '存货', 'debt':'债务', 'revenue': '收入', 'should_payback': '待偿还本金',
+                                  'iDebt':'利息', 'cost': '支出', 'business_profit': '商业利润',
                                   'price': '今日定价','profit':'利润', 'economy_profit':'金融利润', 'next_price':'次日定价', 'WNDF':'决策贷款意愿', 'get_WNDF': '获得贷款',
                                   'total_profit': '总利润', 'total_revenue': '总收入', 'total_cost': '总支出', 'output': '本回合生产',
-                                  'dscr': '偿债能力', 'dscr_avg': '平均偿债能力',
+                                  'dscr': '偿债能力', 'dscr_avg': '平均偿债能力', 'dscr_count': '偿债能力统计天数',
                                   'sales': '本回合售出','total_sales':'总售出', 'reward':'奖励','intention_policy_K':'决策意愿_K',
                                   'intention_policy_L': '决策意愿_L','WNDB_production1':'借贷意愿_生产企业1','WNDB_consumption1':'借贷意愿_消费企业1',
                                   'WNDB_production2': '借贷意愿_生产企业2', 'WNDB_consumption2': '借贷意愿_消费企业2',
                                   'intention_policy':'决策意愿', 'get_shop': '获取商品数', 'able_fund':'剩余可用储备金', 'bond': '债券',
                                   'WNDB': '借贷意愿', 'real_WNDB': '实际借贷','total_reward':'累计奖励'}
         # 企业普通属性
-        self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
-                            'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'dscr', 'dscr_avg', 'output', 'sales','total_sales']
+        self.e_property = ['money', 'stock', 'debt', 'revenue', 'iDebt', 'should_payback', 'dscr', 'dscr_avg',
+                            'dscr_count', 'cost', 'business_profit','economy_profit', 'price', 'next_price', 'WNDF',
+                            'get_WNDF', 'total_profit', 'total_cost', 'total_revenue', 'output', 'sales','total_sales']
         # 企业字典变量属性
         self.e_dict = {'intention_policy': ['K', 'L'], 'get_shop': ['K', 'L'],'reward':['business','economy'],'loss':['business','economy'],
                        'total_reward':['business','economy']}
@@ -401,8 +403,13 @@ class Logger:
             try:
                 target_data = self.data['enterprise']['finish'][target_name]
                 dscr_values = target_data['平均偿债能力'][start_at:]
-                dscr_end = min(end, len(dscr_values))
-                values = [dscr_values[i] for i in range(start, dscr_end)]
+                dscr_counts = target_data['偿债能力统计天数'][start_at:]
+                dscr_end = min(end, len(dscr_values), len(dscr_counts))
+                values = [
+                    dscr_values[i]
+                    for i in range(start, dscr_end)
+                    if dscr_counts[i] > 0
+                ]
 
                 if target_name.startswith('生产企业'):
                     production_values.extend(values)
@@ -412,16 +419,13 @@ class Logger:
                 pass
 
         metrics = {}
-        top_n = 70
         if production_values:
-            top_production_values = sorted(production_values, reverse=True)[:top_n]
-            metrics['每百回合/偿债能力/生产企业'] = sum(top_production_values) / len(top_production_values)
-            metrics['每百回合/偿债能力中位数/生产企业'] = median(top_production_values)
+            metrics['每百回合/偿债能力/生产企业'] = sum(production_values) / len(production_values)
+            metrics['每百回合/偿债能力中位数/生产企业'] = median(production_values)
 
         if consumption_values:
-            top_consumption_values = sorted(consumption_values, reverse=True)[:top_n]
-            metrics['每百回合/偿债能力/消费企业'] = sum(top_consumption_values) / len(top_consumption_values)
-            metrics['每百回合/偿债能力中位数/消费企业'] = median(top_consumption_values)
+            metrics['每百回合/偿债能力/消费企业'] = sum(consumption_values) / len(consumption_values)
+            metrics['每百回合/偿债能力中位数/消费企业'] = median(consumption_values)
 
         if metrics:
             if log_step is None:

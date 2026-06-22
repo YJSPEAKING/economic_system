@@ -233,6 +233,7 @@ class enterprise_nnu:
             state_np = np.array(state)
             norm_state = (state_np - self.obs_mean.cpu().numpy()) / np.sqrt(self.obs_var.cpu().numpy() + 1e-8)
             norm_state = np.clip(norm_state, -5.0, 5.0)
+            self.last_actor_state = norm_state.copy()
 
             # 调用 TD3 的 choose_action (此时 Actor 已是专家水平)
             h_epi, action = self.enterprise.choose_action(None if new_ep else self.epi, norm_state)
@@ -242,6 +243,7 @@ class enterprise_nnu:
 
         # 否则（如 consumption1），逻辑照旧走 TD3 的探索/决策逻辑
         state = np.array(state)
+        self.last_actor_state = state.copy()
         h_epi = None if new_ep else self.epi
         h_epi, action = self.enterprise.choose_action(h_epi, state)
         if new_ep:

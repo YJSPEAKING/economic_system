@@ -42,6 +42,7 @@ class bank_nnu:
         else:
             h_epi = self.epi
         state = np.array(state)  # state准备就绪
+        self.last_actor_state = state.copy()
 
         # =====得到action=====#
         h_epi, action = self.bank.choose_action(h_epi, state)
