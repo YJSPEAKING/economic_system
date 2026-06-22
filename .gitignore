@@ -1,0 +1,4 @@
+real_System_remake/trajectory_logs/
+real_System_remake/checkpoints/final_weights/
+__pycache__/
+*.pyc
