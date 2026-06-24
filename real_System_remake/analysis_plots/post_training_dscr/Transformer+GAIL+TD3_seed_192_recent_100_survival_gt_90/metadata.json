@@ -1,0 +1,11 @@
+{
+  "source": "trajectory_logs\\Transformer+GAIL+TD3\\seed_192\\production1_daily_trajectory.csv",
+  "algorithm": "Transformer+GAIL+TD3",
+  "seed": 192,
+  "selection": "The most recent 100 episodes whose maximum recorded day is strictly greater than 90.",
+  "dscr_formula": "DSCR = money / (should_payback + iDebt), using stored raw_dscr.",
+  "valid_dscr_observation": "day >= 5 and raw_dscr_count increases within the episode.",
+  "boxplot": "Q1 and Q3 use linear interpolation. Fences are Q1-1.5*IQR and Q3+1.5*IQR. Whiskers are observed extrema inside the fences.",
+  "risk_share_primary": "DSCR < 1 divided by all valid firm-day observations from the selected episodes.",
+  "minimum_dscr_filter": "Observations with DSCR < 2 are removed before all statistics."
+}

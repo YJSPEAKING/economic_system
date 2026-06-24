@@ -1,0 +1,9 @@
+{
+  "definition": "A shared constant is solved so that the arithmetic mean of the eight TD3 seed-level stable episode-average DSCR values equals half of its value under constant 2.5.",
+  "stable_window_episodes": 1000,
+  "current_constant": 2.5,
+  "current_group_mean_dscr": 37.380670970979864,
+  "target_group_mean_dscr": 18.690335485489932,
+  "solved_shared_constant": 52.67038329008322,
+  "achieved_group_mean_dscr": 18.690335485489936
+}

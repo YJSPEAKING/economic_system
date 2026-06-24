@@ -1,0 +1,10 @@
+{
+  "source": "trajectory_logs\\TD3\\seed_739\\production1_daily_trajectory.csv",
+  "algorithm": "TD3",
+  "seed": 739,
+  "selection": "The most recent 100 episodes whose maximum recorded day is strictly greater than 90.",
+  "dscr_formula": "DSCR = money / (2 * (should_payback + iDebt)), reconstructed as raw_dscr / 2.",
+  "valid_dscr_observation": "day >= 5 and raw_dscr_count increases within the episode.",
+  "boxplot": "Q1 and Q3 use linear interpolation. Fences are Q1-1.5*IQR and Q3+1.5*IQR. Whiskers are observed extrema inside the fences.",
+  "risk_share_primary": "DSCR < 1 divided by all valid firm-day observations from the selected episodes."
+}

@@ -1,0 +1,2 @@
+algorithm,seed,selected_episode_count,selection_rule,first_selected_episode,last_selected_episode,minimum_dscr_filter,valid_firm_day_observations_before_minimum_filter,removed_by_minimum_filter,valid_firm_day_observations_all,dscr_below_1_count_all,dscr_below_1_share_percent_all,valid_firm_day_observations_iqr_retained,dscr_below_1_count_iqr_retained,dscr_below_1_share_percent_iqr_retained
+Transformer+GAIL+TD3,192,100,latest episodes with survival_days > 90,5890,6098,2,9355,96,9259,0,0,7938,0,0

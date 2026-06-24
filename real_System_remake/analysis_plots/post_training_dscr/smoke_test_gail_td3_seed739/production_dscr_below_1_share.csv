@@ -1,0 +1,2 @@
+﻿algorithm,seed,evaluation_episodes,valid_firm_day_observations_all,dscr_below_1_count_all,dscr_below_1_share_percent_all,valid_firm_day_observations_iqr_retained,dscr_below_1_count_iqr_retained,dscr_below_1_share_percent_iqr_retained
+GAIL+TD3,739,2,88,0,0.0,68,0,0.0

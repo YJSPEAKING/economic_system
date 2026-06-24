@@ -1,0 +1,15 @@
+{
+  "algorithm": "GAIL+TD3",
+  "seed": 739,
+  "evaluation_episodes": 100,
+  "checkpoint_dir": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\checkpoints\\final_weights\\GAIL+TD3\\seed_739",
+  "action_policy": "deterministic actor output; no exploration noise; no learning",
+  "production_state_normalization": "obs_rms_params.pth",
+  "dscr_formula": "money / (should_payback + iDebt)",
+  "valid_dscr_day": "day >= debt_time and should_payback + iDebt > 1e-6",
+  "boxplot_rule": "Q1/Q3 linear percentiles; whiskers are observed extrema within Q1-1.5*IQR and Q3+1.5*IQR",
+  "risk_share_primary_denominator": "all valid production firm-day DSCR observations",
+  "unique_episode_trajectories": 1,
+  "unique_day_dscr_pairs": 44,
+  "independence_warning": "Repeated deterministic episodes are not independent observations."
+}

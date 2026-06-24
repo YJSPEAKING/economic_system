@@ -81,7 +81,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                    notes="online GAIL+TD3 v1.26, daily trajectory CSV, valid DSCR days, final seed checkpoints saved",
+                    notes="online GAIL+TD3 v1.26, trajectory-based DSCR analysis using the latest 100 episodes with survival days above 90",
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了

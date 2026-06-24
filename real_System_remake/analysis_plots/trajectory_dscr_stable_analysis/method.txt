@@ -1,0 +1,14 @@
+Production-enterprise DSCR trajectory analysis
+
+Source: production1_daily_trajectory.csv for every algorithm and seed.
+Valid daily observation: day >= 5 and raw_dscr_count increases relative to the previous row in the same episode.
+DSCR value: raw_dscr saved by the environment at the original pre-repayment calculation point.
+Stable window: the last 1000 episodes in each trajectory file.
+Final window: the last 100 episodes in each trajectory file.
+Near 1 (narrow): 0.8 <= DSCR <= 1.2.
+Near 1 (wide): 0.5 <= DSCR <= 1.5.
+Two distributions are reported: valid daily DSCR and each episode's final raw_dscr_avg.
+Method 1 formula: DSCR = money / (2 * (should_payback + iDebt)).
+Method 1 daily DSCR is reconstructed as raw_dscr / 2.
+Method 1 episode averages are recalculated from adjusted valid daily observations.
+Method 2 applies the 1.5*IQR rule to Method 1 values: Q1 and Q3 use linear interpolation, fences are Q1-1.5*IQR and Q3+1.5*IQR, and whiskers are the minimum and maximum retained observations.

@@ -1,0 +1,52 @@
+TD3版本提示词
+
+请在TD3实验代码所在分支中实现一个独立的训练后评估脚本。该脚本不得修改训练代码、奖励函数、环境状态转移或已有权重文件。
+
+评估对象为生产企业production1。评估使用seed 739，固定运行100个episode。训练完成后的权重目录为：
+real_System_remake/checkpoints/final_weights/TD3/seed_739
+
+脚本必须加载production1_actor.pth、consumption1_actor.pth和bank1_actor.pth。脚本必须使用actor的确定性输出，不加入探索噪声，不写入经验池，不调用learn，不更新actor、critic或其他网络。评估环境的随机种子设为739。
+
+DSCR使用新公式：
+DSCR = money / (2 × (should_payback + iDebt))
+
+脚本只在day >= debt_time且should_payback + iDebt > 1e-6时记录生产企业的DSCR。记录单位为企业日，即每个episode内每个有效偿债日形成一条观测。
+
+脚本需要输出以下CSV：
+1. production_dscr_all_firm_days.csv：包含algorithm、seed、episode、day、dscr和dscr_below_1。
+2. production_dscr_iqr_retained_firm_days.csv：仅保留通过1.5×IQR规则的数据。
+3. production_dscr_episode_summary.csv：包含每个episode的存活天数、有效DSCR天数、DSCR均值、中位数和DSCR<1占比。
+4. production_dscr_boxplot_statistics.csv：包含样本总数、Q1、中位数、Q3、IQR、理论上下界、实际上下须、离群值数量、离群值占比、过滤前均值和过滤后均值。
+5. production_dscr_below_1_share.csv：包含全部有效企业日中DSCR<1的数量和占比，并附带IQR过滤后的数量和占比作为补充。
+
+四分位数使用线性插值。IQR = Q3 - Q1。理论下界为Q1 - 1.5×IQR，理论上界为Q3 + 1.5×IQR。下须是不低于理论下界的最小实际数据点，上须是不高于理论上界的最大实际数据点。
+
+右侧风险柱状图应优先使用全部有效企业日的DSCR<1占比，不应先删除离群值，因为过滤可能改变风险比例。脚本需要关闭SwanLab上传，并避免覆盖训练阶段生成的trajectory_logs。
+
+
+Transformer+GAIL+TD3版本提示词
+
+请在Transformer+GAIL+TD3实验代码所在分支中实现一个独立的训练后评估脚本。该脚本不得修改训练代码、Transformer结构、奖励函数、环境状态转移或已有权重文件。
+
+评估对象为生产企业production1。评估使用seed 291，固定运行100个episode。训练完成后的权重目录为：
+real_System_remake/checkpoints/final_weights/Transformer+GAIL+TD3/seed_291
+
+脚本必须按照该分支实际保存的网络结构重建并加载production1、consumption1和bank1的actor。若actor依赖Transformer历史序列、mask、hidden state或长度信息，脚本必须复用训练时完全相同的历史状态构造与归一化逻辑。脚本不能把Transformer actor当成普通MLP加载。
+
+脚本必须使用actor的确定性输出，不加入探索噪声，不写入经验池，不调用learn，不更新actor、critic、Transformer或判别器。评估环境的随机种子设为291。
+
+DSCR沿用原始公式：
+DSCR = money / (should_payback + iDebt)
+
+脚本只在day >= debt_time且should_payback + iDebt > 1e-6时记录生产企业的DSCR。记录单位为企业日，即每个episode内每个有效偿债日形成一条观测。
+
+脚本需要输出以下CSV：
+1. production_dscr_all_firm_days.csv：包含algorithm、seed、episode、day、dscr和dscr_below_1。
+2. production_dscr_iqr_retained_firm_days.csv：仅保留通过1.5×IQR规则的数据。
+3. production_dscr_episode_summary.csv：包含每个episode的存活天数、有效DSCR天数、DSCR均值、中位数和DSCR<1占比。
+4. production_dscr_boxplot_statistics.csv：包含样本总数、Q1、中位数、Q3、IQR、理论上下界、实际上下须、离群值数量、离群值占比、过滤前均值和过滤后均值。
+5. production_dscr_below_1_share.csv：包含全部有效企业日中DSCR<1的数量和占比，并附带IQR过滤后的数量和占比作为补充。
+
+四分位数使用线性插值。IQR = Q3 - Q1。理论下界为Q1 - 1.5×IQR，理论上界为Q3 + 1.5×IQR。下须是不低于理论下界的最小实际数据点，上须是不高于理论上界的最大实际数据点。
+
+右侧风险柱状图应优先使用全部有效企业日的DSCR<1占比，不应先删除离群值，因为过滤可能改变风险比例。脚本需要关闭SwanLab上传，并避免覆盖训练阶段生成的trajectory_logs。
