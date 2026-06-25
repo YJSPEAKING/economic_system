@@ -14,7 +14,6 @@ DATA_DIR = (
     / "post_training_dscr"
     / "three_algorithm_recent_100_survival_gt_90"
 )
-BOXPLOT_CSV = DATA_DIR / "three_algorithm_boxplot_statistics.csv"
 RISK_CSV = DATA_DIR / "three_algorithm_dscr_below_1_share.csv"
 OUTPUT_PATH = DATA_DIR / "three_algorithm_dscr_boxplot_and_risk.png"
 
@@ -73,74 +72,14 @@ def main() -> None:
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator
 
-    box_rows = read_rows(BOXPLOT_CSV)
     risk_rows = read_rows(RISK_CSV)
 
-    missing_box = [name for name in ORDER if name not in box_rows]
     missing_risk = [name for name in ORDER if name not in risk_rows]
-    if missing_box or missing_risk:
-        raise RuntimeError(
-            f"Missing algorithms. Boxplot: {missing_box}; risk: {missing_risk}"
-        )
+    if missing_risk:
+        raise RuntimeError(f"Missing algorithms: {missing_risk}")
 
     configure_matplotlib()
-    fig, (ax_box, ax_bar) = plt.subplots(1, 2, figsize=(12.0, 5.6))
-
-    box_stats = []
-    for algorithm, label in zip(ORDER, LABELS):
-        row = box_rows[algorithm]
-        box_stats.append(
-            {
-                "label": label,
-                "med": float(row["median"]),
-                "q1": float(row["q1"]),
-                "q3": float(row["q3"]),
-                "whislo": float(row["lower_whisker"]),
-                "whishi": float(row["upper_whisker"]),
-                "fliers": [],
-            }
-        )
-
-    artists = ax_box.bxp(
-        box_stats,
-        showfliers=False,
-        patch_artist=True,
-        widths=0.48,
-        boxprops={"linewidth": 1.15, "edgecolor": "#555555"},
-        whiskerprops={"linewidth": 1.15, "color": "#555555"},
-        capprops={"linewidth": 1.15, "color": "#555555"},
-        medianprops={"linewidth": 1.8, "color": "#222222"},
-        zorder=3,
-    )
-    for patch, algorithm in zip(artists["boxes"], ORDER):
-        patch.set_facecolor(COLORS[algorithm])
-        patch.set_alpha(0.48)
-
-    ax_box.axhline(
-        1.0,
-        color="#666666",
-        linestyle="--",
-        linewidth=1.15,
-        zorder=2,
-    )
-    ax_box.text(
-        3.42,
-        1.22,
-        "DSCR = 1",
-        ha="right",
-        va="bottom",
-        fontsize=9,
-        color="#555555",
-    )
-    max_whisker = max(float(box_rows[name]["upper_whisker"]) for name in ORDER)
-    box_upper = max(10, math.ceil((max_whisker * 1.08) / 5) * 5)
-    ax_box.set_ylim(0, box_upper)
-    box_tick = 5 if box_upper <= 50 else math.ceil(box_upper / 5 / 10) * 10
-    ax_box.yaxis.set_major_locator(MultipleLocator(box_tick))
-    ax_box.set_ylabel("DSCR", labelpad=10)
-    ax_box.set_title("(a) 生产企业DSCR分布", pad=10)
-    ax_box.set_xticklabels(LABELS)
-    style_axis(ax_box)
+    fig, ax_bar = plt.subplots(figsize=(6.6, 5.6))
 
     risk_values = [
         float(risk_rows[name]["dscr_below_1_share_percent_all"])
@@ -161,7 +100,7 @@ def main() -> None:
     ax_bar.set_xticks(range(len(ORDER)))
     ax_bar.set_xticklabels(LABELS)
     ax_bar.set_ylabel("占比（%）", labelpad=10)
-    ax_bar.set_title("(b) DSCR < 1 的企业日占比", pad=10)
+    ax_bar.set_title("DSCR < 1 的企业日占比", pad=10)
     style_axis(ax_bar)
 
     label_offset = bar_upper * 0.025
@@ -176,13 +115,11 @@ def main() -> None:
             color="#222222",
         )
 
-    fig.suptitle("训练后生产企业偿债能力评价", y=0.975)
     fig.subplots_adjust(
-        left=0.075,
-        right=0.985,
-        bottom=0.12,
-        top=0.86,
-        wspace=0.24,
+        left=0.13,
+        right=0.98,
+        bottom=0.14,
+        top=0.91,
     )
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
