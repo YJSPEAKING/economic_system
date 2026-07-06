@@ -499,10 +499,10 @@ def add_gail_td3_section_legacy(doc: Document) -> None:
     )
     add_body(
         doc,
-        "生产企业 Critic 使用融合奖励计算 TD 目标值。"
+        "生产企业 Critic 使用融合奖励计算 TD3 的 Critic 目标值。"
         "融合奖励由环境奖励 R_env 和加权模仿奖励 R_int 组成。"
         "模仿奖励不会直接作为 Actor 的监督标签，也不会把专家动作直接送入 Actor 损失函数。"
-        "它通过 Critic 的 TD 目标值影响价值估计，再由 Actor 最大化 Critic 估计价值完成策略更新。"
+        "它通过 TD3 的 Critic 目标值影响价值估计，再由 Actor 最大化 Critic 估计价值完成策略更新。"
         "这种结构保留了 TD3 的在线强化学习能力，同时让判别器对专家行为模式的判断通过价值网络间接影响生产企业策略。"
     )
     if TRAIN_FLOW_FIG.exists():
@@ -515,7 +515,7 @@ def add_gail_td3_section_legacy(doc: Document) -> None:
     add_body(
         doc,
         "生产企业主体的状态向量维度为 33，动作向量维度为 4。"
-        "专家数据文件中的每一条记录由状态部分和动作部分组成。本文将其中的前 33 个字段定义为专家状态，将其后的 4 个字段定义为专家动作。"
+        "专家数据文件中的每一条记录由状态字段和动作字段组成，其中前 33 个字段对应专家状态，后 4 个字段对应专家动作。"
         "在线交互过程中，生产企业 Actor 输出的动作与当前状态共同构成生成样本。"
         "这些生成样本一方面进入经验池，用于 TD3 的 Critic 和 Actor 更新；另一方面在网络参数更新阶段被取出，用作判别器的生成样本。"
     )
@@ -552,7 +552,7 @@ def add_gail_td3_section_legacy(doc: Document) -> None:
     )
     add_body(
         doc,
-        "Critic 的 TD 目标值使用融合奖励和 TD3 的双 Critic 目标网络计算。"
+        "TD3 的 Critic 目标值使用融合奖励和双 Critic 目标网络计算。"
         "其基本形式可以写为 y = R + γ(1-d) min(Q_1'(s', μ'(s')), Q_2'(s', μ'(s'))) ，其中 d 表示终止标记。"
         "Critic 根据目标值 y 与当前估计值之间的 TD-Error 更新参数。"
         "Actor 的更新目标是最大化 Critic 对当前策略动作的价值估计，等价于最小化 -E[Q_1(s, μ(s))]。"
@@ -580,7 +580,7 @@ def add_gail_td3_section(doc: Document) -> None:
         "图4-1给出了基于生成对抗模仿学习与 TD3 的主体训练方案。"
         "在该方案中，专家行为样本为判别器提供专家分布参照，生产企业在线交互样本构成生成样本。"
         "判别器根据两类状态-动作样本之间的差异产生模仿奖励。"
-        "本文实现将该模仿奖励与环境奖励融合，并将融合奖励用于 Critic 的 TD 目标值计算，使 GAIL 信号通过价值估计影响 Actor 更新。"
+        "本文实现将该模仿奖励与环境奖励融合，并将融合奖励用于 TD3 的 Critic 目标值计算，使 GAIL 信号通过价值估计影响 Actor 更新。"
         "模仿学习信号进入策略学习过程的路径可以概括为“判别器—融合奖励—Critic—Actor”。"
     )
     if GAIL_TD3_REF_FIG.exists():
@@ -593,7 +593,7 @@ def add_gail_td3_section(doc: Document) -> None:
     add_body(
         doc,
         "生产企业主体的状态向量维度为 33，动作向量维度为 4。"
-        "专家数据文件中的每一条记录由状态部分和动作部分组成。本文将其中的前 33 个字段定义为专家状态，将其后的 4 个字段定义为专家动作。"
+        "专家数据文件中的每一条记录由状态字段和动作字段组成，其中前 33 个字段对应专家状态，后 4 个字段对应专家动作。"
         "在线交互过程中，生产企业 Actor 输出的动作与当前状态共同构成生成样本。"
         "这些生成样本一方面进入经验池，用于 TD3 的 Critic 和 Actor 更新；另一方面在网络参数更新阶段被取出，用作判别器的生成样本。"
         "令一次网络参数更新阶段采样得到的经验池批量为："
@@ -607,8 +607,7 @@ def add_gail_td3_section(doc: Document) -> None:
     add_formula(doc, r"\mathcal{B}_{G}=\{(s_i,a_i)\}_{i=1}^{N}")
     add_body(
         doc,
-        "专家样本从专家数据文件中独立采样得到。"
-        "本文将专家数据文件中的前 33 个字段定义为专家状态，将其后的 4 个字段定义为专家动作。"
+        "专家样本从上述专家数据文件中独立采样得到。"
         "专家批量定义为："
     )
     add_formula(doc, r"\mathcal{B}_{E}=\{(s_i^{E},a_i^{E})\}_{i=1}^{N}")
@@ -638,30 +637,25 @@ def add_gail_td3_section(doc: Document) -> None:
         doc,
         "其中，f_φ(s,a) 表示判别器网络在参数 φ 下输出的 logits，σ(·) 表示 Sigmoid 函数，D_φ(s,a) 表示样本来自专家分布的判别概率。"
         "判别器训练中，专家样本标签设为 1，生成样本标签设为 0。"
-        "判别器训练首先最小化核心对抗分类损失："
+        "判别器训练采用二元交叉熵目标，使专家状态-动作对对应较高的判别概率，使生产企业生成的状态-动作对对应较低的判别概率。"
+        "判别器损失定义为："
     )
     add_formula(doc, r"L_D(\phi)=-\frac{1}{N}\sum_{i=1}^{N}\left[\log D_{\phi}(s_i^{E},a_i^{E})+\log\left(1-D_{\phi}(s_i,a_i)\right)\right]")
     add_body(
         doc,
         "该式中，L_D(φ) 表示判别器损失。"
         "第一项提高专家状态-动作对被判定为专家样本的概率，第二项降低生成状态-动作对被判定为专家样本的概率。"
-        "判别器的参数更新目标由对抗分类损失和熵正则项共同构成："
+        "生产企业生成样本对应的模仿奖励由判别器概率直接给出："
     )
-    add_formula(doc, r"L_D^{reg}(\phi)=L_D(\phi)-\lambda_H H(D_{\phi})")
+    add_formula(doc, r"r_i^{int}=D_{\phi}(s_i,a_i)=\sigma(f_{\phi}(s_i,a_i))")
     add_body(
         doc,
-        "其中，H(D_{\\phi}) 表示判别器输出分布的熵，\\lambda_H 表示熵正则项权重。"
-        "该正则项用于抑制判别器过早给出过于确定的分类结果。"
-        "生成样本对应的模仿奖励定义为："
-    )
-    add_formula(doc, r"r_i^{int}=-\log\left(1-D_{\phi}(s_i,a_i)+\epsilon\right)")
-    add_body(
-        doc,
-        "其中，r_i^{int} 表示第 i 个生成样本对应的模仿奖励，\\epsilon 为防止对数项数值不稳定的常数。"
+        "其中，r_i^{int} 表示第 i 个生成样本对应的模仿奖励。"
+        "该奖励表示判别器认为生成状态-动作对接近专家分布的概率。"
         "在本文训练流程中，生产企业主体与仿真环境交互产生的经验首先进入经验池。"
         "每次网络参数更新阶段从经验池采样一个经验批量，并将其中的状态-动作对作为生成样本。"
         "同一批生成样本与专家样本共同用于判别器参数更新，随后判别器对该批生成样本输出模仿奖励。"
-        "模仿奖励与环境奖励形成融合奖励，并进入 Critic 的 TD 目标值计算；Actor 的参数更新由 Critic 对当前策略动作的价值估计驱动。"
+        "模仿奖励与环境奖励形成融合奖励，并进入 TD3 的 Critic 目标值计算；Actor 的参数更新由 Critic 对当前策略动作的价值估计驱动。"
         "本文采用在线判别器训练方式，判别器参数随生产企业主体交互样本和策略变化持续更新。"
     )
 
@@ -680,18 +674,18 @@ def add_gail_td3_section(doc: Document) -> None:
         doc,
         "其中，\\tilde{r}_i 表示融合奖励，r_i^{env} 表示仿真环境给出的奖励，r_i^{int} 表示判别器产生的模仿奖励，w_t^{GAIL} 表示第 t 次网络参数更新阶段采用的模仿奖励权重。"
         "\\lambda_{GAIL} 表示模仿奖励基础权重，n_t 表示第 t 次更新时超过学习起点后的训练步数，n_{warm} 表示 warm-up 长度。"
-        "在融合奖励确定后，TD3 使用目标 Actor 和目标 Critic 计算 TD 目标值。"
+        "在融合奖励确定后，目标 Actor 根据下一状态生成动作，并加入裁剪后的目标策略平滑噪声；该动作随后被限制在动作边界内。"
+        "目标 Critic 根据下一状态和目标动作输出两个 Q 值估计，TD3 取两个估计值中的较小值，并与融合奖励共同构造当前 Critic 更新所需的目标值。"
         "目标动作与目标值定义如下："
     )
-    add_formula(doc, r"\tilde{a}'_i=\mu_{\bar{\psi}}(s'_i)+\operatorname{clip}(\epsilon_i,-c,c)")
+    add_formula(doc, r"\tilde{a}'_i=\operatorname{clip}\left(\mu_{\bar{\psi}}(s'_i)+\operatorname{clip}(\epsilon_i,-c,c),-a_{\max},a_{\max}\right)")
     add_formula(doc, r"y_i=\tilde{r}_i+\gamma(1-d_i)\min_{k=1,2}Q_{\bar{\theta}_k}(s'_i,\tilde{a}'_i)")
     add_body(
         doc,
         "其中，\\mu_{\\bar{\\psi}} 表示目标 Actor，Q_{\\bar{\\theta}_k} 表示目标 Critic 模块中的第 k 个 Q 值估计分支，k=1,2。"
         "该目标值形式沿用 TD3 中取双 Q 估计较小值的目标值构造方式。"
-        "\\epsilon_i 表示目标策略平滑噪声，c 表示噪声裁剪边界，\\gamma 表示折扣因子。"
+        "\\epsilon_i 表示目标策略平滑噪声，c 表示噪声裁剪边界，a_{\\max} 表示动作边界，\\gamma 表示折扣因子。"
         "d_i 为终止标记；当样本为终止状态时，后续状态价值不再进入目标值。"
-        "本文方法的改动集中在即时奖励项的构造方式，即以融合奖励 \\tilde{r}_i 进入 TD 目标值计算。"
         "Critic 根据当前 Q 值与目标值之间的误差更新参数："
     )
     add_formula(doc, r"L_Q(\theta_1,\theta_2)=\frac{1}{N}\sum_{i=1}^{N}\sum_{k=1}^{2}\ell\left(Q_{\theta_k}(s_i,a_i),y_i\right)")
@@ -699,25 +693,22 @@ def add_gail_td3_section(doc: Document) -> None:
         doc,
         "其中，L_Q 表示 Critic 损失，Q_{\\theta_k} 表示在线 Critic 模块中的第 k 个 Q 值估计分支，k=1,2。"
         "\\ell(\\cdot) 表示本文采用的 Critic 误差函数。"
-        "在 Critic 更新之后，Actor 通过最大化在线 Critic 对当前策略动作的价值估计来更新。"
+        "在 Critic 更新之后，生产企业 Actor 通过最大化当前 Critic 对其策略动作的价值估计完成参数更新。"
         "Actor 损失函数定义为："
     )
     add_formula(doc, r"L_{\mu}(\psi)=-\frac{1}{N}\sum_{i=1}^{N}Q_{\theta_1}(s_i,\mu_{\psi}(s_i))")
     add_body(
         doc,
-        "其中，L_\\mu 表示 Actor 损失，\\mu_{\\psi} 表示在线 Actor。"
-        "该式说明 Actor 的参数更新来自 Critic 对当前策略动作的价值估计。"
+        "其中，L_\\mu 表示 Actor 损失，\\mu_{\\psi} 表示当前训练的生产企业 Actor，即生产企业主体的策略网络。"
+        "在该训练方案中，生产企业 Actor 的梯度信号来自 Critic 对当前策略动作的价值估计。"
         "专家动作在该训练方案中用于构造判别器的专家样本，并通过判别器奖励间接进入策略学习过程。"
-        "判别器信息通过融合奖励改变 Critic 的 TD 目标值，再间接影响 Actor 的策略更新。"
+        "判别器信息通过融合奖励进入 TD3 的 Critic 目标值计算，并由价值估计影响 Actor 的策略更新。"
         "目标网络采用软更新形式："
     )
     add_formula(doc, r"\bar{\theta}_k\leftarrow \tau\theta_k+(1-\tau)\bar{\theta}_k,\quad \bar{\psi}\leftarrow \tau\psi+(1-\tau)\bar{\psi}")
     add_body(
         doc,
         "其中，\\tau 表示软更新系数。"
-        "本节公式中的 TD3 目标值结构沿用既有 TD3 框架。"
-        "本文方法的改动集中在即时奖励项的构造方式：生产企业主体的 TD 目标值使用融合奖励 \\tilde{r}_i，将环境奖励与判别器生成的模仿奖励共同纳入 Critic 更新过程，并进一步影响 Actor 的策略更新。"
-        "判别器生成样本与 Critic 目标值计算所用经验批量来自同一次经验池采样。"
     )
 
     add_heading(doc, "5  基于Transformer表征增强的GAIL+TD3主体训练方案", 1)
