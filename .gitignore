@@ -1,0 +1,13 @@
+# Experiment outputs and generated runtime artifacts
+real_System_remake/trajectory_logs/
+real_System_remake/checkpoints/
+real_System_remake/swanlog/
+real_System_remake/human_collect_logs/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# IDE local state
+.idea/workspace.xml
+.idea/shelf/
