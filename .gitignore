@@ -1,0 +1,10 @@
+real_System_remake/trajectory_logs/
+
+__pycache__/
+*.py[cod]
+
+.vs/
+*.ipch
+*.pch
+Debug/
+x64/

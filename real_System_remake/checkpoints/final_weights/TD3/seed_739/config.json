@@ -1,0 +1,133 @@
+{
+  "seed": 739,
+  "finished_episode": 6000,
+  "total_sim_days": 233030,
+  "target_logged_episode": 6000,
+  "max_episodes": 6001,
+  "enterprise_td3_config": {
+    "scope": "",
+    "state_dim": 0,
+    "action_dim": 4,
+    "action_bound": 0.5,
+    "REWARD_GAMMA": 0.95,
+    "MEMORY_CAPACITY": 80000,
+    "LEARNING_RATE_ACTOR": 0.001,
+    "LEARNING_RATE_CRITIC": 0.002,
+    "LEARNING_RATE_ACTOR_STABLE": 1e-05,
+    "LEARNING_RATE_CRITIC_STABLE": 2e-05,
+    "LEARNING_RATE_DECAY": 1,
+    "LEARNING_RATE_DECAY_TIME": 200,
+    "SOFT_REPLACE_TAU": 0.01,
+    "BATCH_SIZE": 3000,
+    "VAR_INIT": 0.5,
+    "VAR_STABLE": 0.001,
+    "VAR_DROP_AT": 3000,
+    "VAR_STABLE_AT": 80000,
+    "VAR_END_AT": 100000,
+    "SMOOTH_NOISE": 0.01,
+    "ACTOR_UPDATE_DELAY_TIMES": 3,
+    "IS_ACTOR_UPDATE_DELAY": true,
+    "IS_CRITIC_DOUBLE_NETWORK": true,
+    "IS_QNET_SMOOTH_CRITIC": true,
+    "IS_LSTM": true,
+    "MAX_HIST_LEN": 8,
+    "BATCH_SIZE_LSTM": 400,
+    "POLICY_NOISE": 0.2,
+    "DISCOUNT": 0.99,
+    "UPDATE_EVERY": 50,
+    "random_seed": 739
+  },
+  "bank_td3_config": {
+    "scope": "",
+    "state_dim": 0,
+    "action_dim": 2,
+    "action_bound": 0.5,
+    "REWARD_GAMMA": 0.95,
+    "MEMORY_CAPACITY": 80000,
+    "LEARNING_RATE_ACTOR": 0.001,
+    "LEARNING_RATE_CRITIC": 0.002,
+    "LEARNING_RATE_ACTOR_STABLE": 1e-05,
+    "LEARNING_RATE_CRITIC_STABLE": 2e-05,
+    "LEARNING_RATE_DECAY": 1,
+    "LEARNING_RATE_DECAY_TIME": 200,
+    "SOFT_REPLACE_TAU": 0.01,
+    "BATCH_SIZE": 3000,
+    "VAR_INIT": 0.5,
+    "VAR_STABLE": 0.001,
+    "VAR_DROP_AT": 3000,
+    "VAR_STABLE_AT": 80000,
+    "VAR_END_AT": 100000,
+    "SMOOTH_NOISE": 0.01,
+    "ACTOR_UPDATE_DELAY_TIMES": 3,
+    "IS_ACTOR_UPDATE_DELAY": true,
+    "IS_CRITIC_DOUBLE_NETWORK": true,
+    "IS_QNET_SMOOTH_CRITIC": true,
+    "IS_LSTM": true,
+    "MAX_HIST_LEN": 8,
+    "BATCH_SIZE_LSTM": 400,
+    "POLICY_NOISE": 0.2,
+    "DISCOUNT": 0.99,
+    "UPDATE_EVERY": 50,
+    "random_seed": 739
+  },
+  "enterprise_env_config": {
+    "name": "",
+    "output_name": "",
+    "money": 0.0,
+    "WNDF": 100.0,
+    "stock": 10.0,
+    "price": 8.0,
+    "intention": 5.0,
+    "gamma": 0.95,
+    "action_function": {
+      "WNDF": "default_actWNDF",
+      "K": "default_act_shop",
+      "L": "default_act_shop",
+      "price": "default_actPrice"
+    }
+  },
+  "bank_env_config": {
+    "name": "bank1",
+    "fund": 2000,
+    "fund_rate": 1,
+    "fund_increase": 0.1,
+    "debt_time": 5,
+    "debt_i": 0.005,
+    "action_function": {
+      "WNDB": "default_actWNDB"
+    }
+  },
+  "swanlab_config": {
+    "bank_ddpg_config": {
+      "learning_rate_actor": 0.001,
+      "learning_rate_critic": 0.002,
+      "learning_rate_decay": 1,
+      "random_seed": 739,
+      "memory_capacity": 80000
+    },
+    "enterprise_ddpg_config": {
+      "smooth_noise": 0.01,
+      "learning_rate_actor": 0.001,
+      "learning_rate_critic": 0.002,
+      "learning_rate_decay": 1,
+      "random_seed": 739,
+      "memory_capacity": 80000
+    },
+    "attention_config": {
+      "nums_heads": 4
+    }
+  },
+  "saved_files": {
+    "production1_daily_trajectory_csv": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\trajectory_logs\\seed_739\\production1_daily_trajectory.csv",
+    "consumption1_daily_trajectory_csv": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\trajectory_logs\\seed_739\\consumption1_daily_trajectory.csv",
+    "bank1_daily_trajectory_csv": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\trajectory_logs\\seed_739\\bank1_daily_trajectory.csv",
+    "production1_actor": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\production1_actor.pth",
+    "production1_critic": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\production1_critic.pth",
+    "consumption1_actor": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\consumption1_actor.pth",
+    "consumption1_critic": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\consumption1_critic.pth",
+    "bank1_actor": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\bank1_actor.pth",
+    "bank1_critic": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\bank1_critic.pth",
+    "obs_rms_params": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\obs_rms_params.pth",
+    "config": "D:\\福州大学\\3.课外\\实验\\Cortex22_1原版\\Cortex22_Anna0806\\real_System_remake\\checkpoints\\final_weights\\seed_739\\config.json"
+  }
+}
