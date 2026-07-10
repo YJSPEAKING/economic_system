@@ -39,7 +39,12 @@ PARTICIPANT_INFO_FIELDS = [
     ("econ_background", "经济管理背景"),
     ("strategy_experience", "经营策略经验"),
 ]
-PARTICIPANT_INFO_COLUMNS = [f"participant_{key}" for key, _ in PARTICIPANT_INFO_FIELDS]
+PARTICIPANT_CONSENT_FIELDS = [
+    ("consent", "知情同意"),
+    ("consent_timestamp", "知情同意时间"),
+]
+PARTICIPANT_META_FIELDS = PARTICIPANT_INFO_FIELDS + PARTICIPANT_CONSENT_FIELDS
+PARTICIPANT_INFO_COLUMNS = [f"participant_{key}" for key, _ in PARTICIPANT_META_FIELDS]
 ENTERPRISE_ADD_LIST = {
     "production1": "K",
     "consumption1": "L",
@@ -336,7 +341,7 @@ class HumanProductionCollector:
         participant_info = participant_info or {}
         self.participant_info = {
             key: str(participant_info.get(key, "")).strip()
-            for key, _ in PARTICIPANT_INFO_FIELDS
+            for key, _ in PARTICIPANT_META_FIELDS
         }
         self.env = None
         self.state = None
@@ -568,7 +573,7 @@ class HumanProductionCollector:
                 )
             participant_values = []
             if include_participant_info:
-                participant_values = [self.participant_info.get(key, "") for key, _ in PARTICIPANT_INFO_FIELDS]
+                participant_values = [self.participant_info.get(key, "") for key, _ in PARTICIPANT_META_FIELDS]
             writer.writerow(
                 [
                     self.participant_id,

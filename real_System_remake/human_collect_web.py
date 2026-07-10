@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from numbers import Number
 from urllib.parse import urlparse
@@ -21,6 +22,7 @@ from real_System_remake.human_collect_production1 import (
     DEFAULT_SEED,
     HumanProductionCollector,
     PARTICIPANT_INFO_FIELDS,
+    PARTICIPANT_META_FIELDS,
     display_rows,
     format_number,
     raw_state_value,
@@ -616,7 +618,7 @@ def write_episode_summary(session, status, survival_days=None):
 
     columns = [
         "participant_id",
-        *[f"participant_{key}" for key, _ in PARTICIPANT_INFO_FIELDS],
+        *[f"participant_{key}" for key, _ in PARTICIPANT_META_FIELDS],
         "seed",
         "episode",
         "status",
@@ -640,7 +642,7 @@ def write_episode_summary(session, status, survival_days=None):
             "participant_id": session["participant_id"],
             **{
                 f"participant_{key}": session.get("participant_info", {}).get(key, "")
-                for key, _ in PARTICIPANT_INFO_FIELDS
+                for key, _ in PARTICIPANT_META_FIELDS
             },
             "seed": collector.seed,
             "episode": collector.env.episode,
@@ -840,6 +842,11 @@ HTML = r"""<!doctype html>
     .intake-grid input, .intake-grid select { width: 100%; box-sizing: border-box; height: 38px; border: 1px solid #cfd8e3; border-radius: 6px; padding: 6px 10px; background: #fff; font: inherit; }
     .start-area { margin-top: 18px; display: flex; justify-content: center; }
     .start-area button { min-width: 160px; height: 40px; }
+    .consent-box { max-width: 980px; margin: 16px auto 0; padding: 14px 16px; border: 1px solid #cfd8e3; border-radius: 6px; background: #f7faff; color: #344054; text-align: left; font-size: 14px; line-height: 1.65; }
+    .consent-box p { width: 100%; max-width: none; box-sizing: border-box; margin: 0 0 8px; overflow-wrap: break-word; font-size: 14px; }
+    .consent-box .collection-period { color: #12263f; }
+    .consent-check { display: flex; align-items: flex-start; gap: 9px; font-weight: 600; color: #12263f; cursor: pointer; }
+    .consent-check input { width: 17px; height: 17px; margin-top: 3px; flex: 0 0 auto; }
     .hidden { display: none; }
     .busy { position: fixed; inset: 0; background: rgba(255,255,255,.72); display: none; align-items: center; justify-content: center; z-index: 20; }
     .busy.show { display: flex; }
@@ -861,7 +868,7 @@ HTML = r"""<!doctype html>
         <div class="flow-step"><strong>3. 系统自动运行并进入下一天</strong>提交后系统自动完成交易、生产和清算；现金不足以还债时，本回合结束。</div>
       </div>
       <div class="intake-grid">
-        <label>参与者编号（可选）
+        <label>参与者编号（可选，请勿填写姓名）
           <input id="participant" value="anonymous" />
         </label>
         <label>年龄段
@@ -907,8 +914,17 @@ HTML = r"""<!doctype html>
           <input id="accessPassword" type="password" />
         </label>
       </div>
+      <div class="consent-box" aria-labelledby="consentTitle">
+        <p id="consentTitle"><strong>参与说明与知情同意</strong></p>
+        <p class="collection-period"><strong>收集时间：5月21日0点至6月21日0点</strong></p>
+        <p>本实验用于研究仿真经济环境中的经营决策。系统将记录基本信息、每日决策、决策用时及仿真结果，用于学术研究、模型训练和统计分析。请使用匿名编号，不要填写姓名、联系方式等可直接识别身份的信息。参加完全自愿，你可以随时点击“结束采集”退出。</p>
+        <label class="consent-check">
+          <input id="consent" type="checkbox" />
+          <span>我已阅读上述说明，自愿参加，并同意研究者按上述范围记录和使用数据。</span>
+        </label>
+      </div>
       <div class="start-area">
-        <button id="startBtn">开始采集</button>
+        <button id="startBtn" disabled>开始采集</button>
       </div>
     </section>
 
@@ -1300,10 +1316,12 @@ function participantInfo() {
 }
 
 async function start() {
+  if (!$("consent").checked) throw new Error("请先阅读参与说明并勾选知情同意。");
   const data = await api("/api/start", {
     participant_id: $("participant").value,
     password: $("accessPassword").value,
     participant_info: participantInfo(),
+    consent: true,
   });
   sessionId = data.session_id;
   current = data.state;
@@ -1409,6 +1427,7 @@ async function endSession() {
 }
 
 $("startBtn").onclick = () => start().catch(e => alert(e.message));
+$("consent").onchange = () => { $("startBtn").disabled = !$("consent").checked; };
 $("submitBtn").onclick = () => submitStep().catch(e => alert(e.message));
 $("skipBtn").onclick = () => skipToNextBlock().catch(e => alert(e.message));
 $("prevBtn").onclick = togglePrevious;
@@ -1481,8 +1500,12 @@ def get_session(session_id):
 def api_start(payload):
     if ACCESS_PASSWORD and payload.get("password", "") != ACCESS_PASSWORD:
         raise ValueError("访问口令不正确。")
+    if payload.get("consent") is not True:
+        raise ValueError("请先阅读参与说明并确认知情同意。")
     participant_id = payload.get("participant_id", "anonymous")
     participant_info = normalize_participant_info(payload)
+    participant_info["consent"] = "yes"
+    participant_info["consent_timestamp"] = datetime.now(timezone.utc).isoformat()
     auto_policy = payload.get("auto_policy", SERVER_AUTO_POLICY)
     if auto_policy not in {"td3", "fixed"}:
         raise ValueError("auto_policy 只能是 td3 或 fixed。")

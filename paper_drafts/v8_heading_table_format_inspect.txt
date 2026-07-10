@@ -1,0 +1,80 @@
+DOCX=paper_drafts\rendered_v8\基于模仿学习的复杂经济系统主体决策模型小论文大纲稿_修改版v8.docx
+P[0] Heading 1: 1  引言
+  p_indent=None, align=LEFT (0), before=127000, after=76200, line=1.25
+  run font=Times New Roman, size=152400, bold=True, italic=None
+P[6] Heading 1: 2  仿真环境、评价目标与主体决策建模问题
+  p_indent=None, align=LEFT (0), before=127000, after=76200, line=1.25
+  run font=None, size=None, bold=None, italic=None
+P[7] Heading 2: 2.1  仿真环境
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[13] Heading 2: 2.2  主体决策建模
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[20] Heading 2: 2.3 外部评价目标与有限理性专家数据表示
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[25] Heading 1: 3 基于生成对抗模仿学习与TD3的主体训练方案
+  p_indent=None, align=LEFT (0), before=127000, after=76200, line=1.25
+  run font=Times New Roman, size=152400, bold=True, italic=None
+P[26] Heading 2: 3.1 模型训练方案
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[31] Heading 2: 3.2 状态、动作与经验样本
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[40] Heading 2: 3.3 判别器目标与模仿奖励构造
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[48] Heading 2: 3.4 融合奖励与TD3参数更新
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[62] Heading 1: 4 基于Transformer表征增强的GAIL+TD3主体训练方案
+  p_indent=None, align=LEFT (0), before=127000, after=76200, line=1.25
+  run font=Times New Roman, size=152400, bold=True, italic=None
+P[63] Heading 2: 4.1 时序状态表征的引入动机
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[67] Heading 2: 4.2 Transformer 编码器结构
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[86] Heading 2: 4.3 表征增强模块的训练接入与方法边界
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[92] Heading 1: 5 专家数据采集系统与数据整理
+  p_indent=None, align=LEFT (0), before=127000, after=76200, line=1.25
+  run font=Times New Roman, size=152400, bold=True, italic=None
+P[93] Heading 2: 5.1 专家数据来源与采集边界
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[96] Heading 2: 5.2 网页实验系统设计
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[107] Heading 2: 5.3 大模型辅助批量采集方法
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[111] Heading 2: 5.4 数据筛选与专家样本文件整理
+  p_indent=None, align=LEFT (0), before=76200, after=50800, line=1.25
+  run font=Times New Roman, size=133350, bold=True, italic=None
+P[115] Heading 1: 6  实验设置与结果分析
+  p_indent=None, align=LEFT (0), before=127000, after=76200, line=1.25
+  run font=Times New Roman, size=152400, bold=True, italic=None
+P[116] Heading 1: 参考文献
+  p_indent=None, align=LEFT (0), before=127000, after=76200, line=1.25
+  run font=Times New Roman, size=152400, bold=True, italic=None
+
+TABLE0 CELL RUNS
+cell 1,1: 33 维状态向量：包含经营状态、需求信息、交易记录、价格信息和时间状态变量
+  para0 style=Normal align=LEFT (0) indent=None
+    run0 text=33 维状态向量：包含经营状态、需求信息、交易记录、价格信息 font=None size=None bold=None italic=None
+cell 1,2: 4 维连续动作：贷款意愿、生产资料购买意愿、消费品购买意愿、次日定价
+  para0 style=Normal align=LEFT (0) indent=None
+    run0 text= font=None size=None bold=None italic=None
+    run1 text=4 维连续动作：贷款意愿、生产资料购买意愿、消费品购买意愿、 font=Times New Roman size=114300 bold=False italic=None
+cell 2,1: 51 维状态向量：包含银行经营状态与企业主体信息
+  para0 style=Normal align=LEFT (0) indent=None
+    run0 text=51 维状态向量：包含银行经营状态与企业主体信息 font=None size=None bold=None italic=None
+cell 2,2: 2 维连续动作：向生产企业和消费企业发放贷款的意愿
+  para0 style=Normal align=LEFT (0) indent=None
+    run0 text= font=None size=None bold=None italic=None
+    run1 text=2 维连续动作：向生产企业和消费企业发放贷款的意愿 font=Times New Roman size=114300 bold=False italic=None
