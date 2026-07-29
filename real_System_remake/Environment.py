@@ -18,6 +18,7 @@ import os
 third_market_price = 100  # 环境中第三方市场的价格是固定100
 enterprise_price = 8  # 企业的初始价格是8
 DSCR_DUE_EPSILON = 1e-6
+SWANLAB_NOTES = "online GAIL+TD3 v1.27, 得到最终评价尺度，发现仍需修改"
 
 swanlab_config = {
     'bank_ddpg_config': {
@@ -81,7 +82,7 @@ class Environment:
         if self.use_swanlab:
             swanlab.init(project="cortex24_oneplus",
                          name=name,
-                    notes="online GAIL+TD3 v1.26, trajectory-based DSCR analysis using the latest 100 episodes with survival days above 90",
+                    notes=SWANLAB_NOTES,
                          config=swanlab_config)
         self.name = name
         self.lim_day = lim_day  # 设置的生存时间上限，如果要改的话在system.py的self.env = Environment(name='TD3_1_3', lim_day=100)中改就好了

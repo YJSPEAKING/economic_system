@@ -235,6 +235,17 @@ class System:
             torch.save(production_agent.gail_disc.state_dict(), disc_path)
             saved_files["discriminator"] = disc_path
 
+        if production_agent is not None and hasattr(production_agent, "expert_split_metadata"):
+            split_path = os.path.join(checkpoint_dir, "expert_split.json")
+            with open(split_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    _json_safe(production_agent.expert_split_metadata),
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            saved_files["expert_split"] = split_path
+
         obs_keys = ("obs_mean", "obs_var", "act_mean", "act_var")
         if production_agent is not None and all(hasattr(production_agent, key) for key in obs_keys):
             obs_path = os.path.join(checkpoint_dir, "obs_rms_params.pth")
@@ -263,6 +274,7 @@ class System:
             "enterprise_config": enterprise_config.__dict__,
             "bank_config": bank_config.__dict__,
             "swanlab_config": environment_module.swanlab_config,
+            "expert_split": getattr(production_agent, "expert_split_metadata", None),
             "saved_files": saved_files,
         }
         with open(config_path, "w", encoding="utf-8") as f:

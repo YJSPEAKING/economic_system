@@ -17,7 +17,6 @@ import warnings
 import copy
 import time
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -26,6 +25,10 @@ import os
 from new_calculate import *
 # from Agent.DDPG import DDPG
 from Agent.TD3 import TD3
+try:
+    from real_System_remake.expert_data_split import load_expert_episode_split
+except ModuleNotFoundError:
+    from expert_data_split import load_expert_episode_split
 
 # from Agent.TD3_attention import TD3 as TD3_attn  # 如果要使用其他的算法，在import中改掉即可
 # from Agent.TD3withoutNoise import TD3
@@ -88,22 +91,31 @@ class enterprise_nnu:
             # Load expert data for online GAIL.
             csv_path = os.path.join(current_dir, 'expert_data_production1_collected.csv')
             if os.path.exists(csv_path):
-                df = pd.read_csv(csv_path, header=None)
-                expert_data = torch.as_tensor(df.values, dtype=torch.float32, device=self.device)
+                expert_split = load_expert_episode_split(csv_path)
+                expert_data = torch.as_tensor(
+                    expert_split.train_values, dtype=torch.float32, device=self.device
+                )
+                self.expert_split_metadata = expert_split.metadata
                 # 切分状态与动作 (前33是状态，后4是动作)
                 self.expert_states = expert_data[:, :33]
                 self.expert_actions = expert_data[:, 33:37]
                 self.expert_size = len(self.expert_states)
-                print(f"Loaded expert replay buffer from CSV: {self.expert_size} rows.")
+                print(
+                    "Loaded episode-level expert split: "
+                    f"train={self.expert_split_metadata['train_episodes']} episodes/"
+                    f"{self.expert_split_metadata['train_rows']} rows, "
+                    f"test={self.expert_split_metadata['test_episodes']} episodes/"
+                    f"{self.expert_split_metadata['test_rows']} rows."
+                )
             else:
                 raise FileNotFoundError(f"❌ 找不到专家数据文件: {csv_path}")
 
-            # Compute normalization stats from expert CSV, then create a fresh discriminator.
+            # Compute normalization stats from the training split only.
             self.obs_mean = self.expert_states.mean(dim=0)
             self.obs_var = torch.clamp(self.expert_states.var(dim=0, unbiased=False), min=1e-6)
             self.act_mean = self.expert_actions.mean(dim=0)
             self.act_var = torch.clamp(self.expert_actions.var(dim=0, unbiased=False), min=1e-6)
-            print("Online GAIL normalization stats are computed from expert CSV.")
+            print("Online GAIL normalization stats are computed from the expert training split.")
 
             self.gail_disc = RealDiscriminator(s_dim=33, a_dim=4).to(self.device)
             print("GAIL discriminator is randomly initialized and trained online.")

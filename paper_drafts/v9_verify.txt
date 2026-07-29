@@ -1,0 +1,95 @@
+DOCX=paper_drafts\rendered_v9\基于模仿学习的复杂经济系统主体决策模型小论文大纲稿_修改版v9.docx
+STYLE Heading 1 has_pPr=True, has_rPr=True, xml=<w:rPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+  <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="黑体"/>
+  <w:b/>
+  <w:sz w:val="24"/>
+</w:rPr>
+
+STYLE Heading 2 has_pPr=True, has_rPr=True, xml=<w:rPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+  <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="黑体"/>
+  <w:b/>
+  <w:sz w:val="21"/>
+</w:rPr>
+
+P[0] Heading 1: 1  引言
+  p align=LEFT (0) before=127000 after=76200 line=1.25
+  run font=Times New Roman size=152400 bold=True italic=None
+P[6] Heading 1: 2  仿真环境、目标与主体决策建模问题
+  p align=LEFT (0) before=127000 after=76200 line=1.25
+  run font=Times New Roman size=152400 bold=True italic=None
+P[7] Heading 2: 2.1  仿真环境
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[13] Heading 2: 2.2  主体决策建模
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[20] Heading 2: 2.3 仿真目标差异与有限理性专家数据表示
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[21] Normal: 仅采用完全理性目标时，仿真主体通常围绕奖励最大化调整策略，并以收益水平、存活时间和系统稳定性作为主要评价依据。该目标有助于检验仿真环境是否可运行，也有助于检验主体能否利用奖励信号形成高收益策略。但是，经济系统仿真中的主体决策并不总是符合完全理性假设。真实市场主体往往受到信息不完全、风险态度、经验依赖、偏好差异和路径依赖等因素影响，其行为很难被简化为单一收益最大化过程。
+  p align=None before=None after=None line=None
+  run font=None size=None bold=None italic=None
+P[22] Normal: 基于上述局限，本文进一步引入有限理性仿真目标。该目标不要求生产企业主体在每个状态下输出全局最优动作，而是关注生成行为是否接近专家样本中体现的决策模式，并考察动作分布、状态覆盖和动态适应性。模仿学习以专家行为为参照，能够为有限理性行为生成提供训练信号；强化学习仍保留环境交互和价值估计作用，使生成动作与仿真反馈保持关联。
+  p align=None before=None after=None line=None
+  run font=None size=None bold=None italic=None
+P[23] Normal: 专家数据是连接有限理性行为与模型训练目标的中间表示。本文具体使用两类专家数据：第一类来自网页实验系统中的人工参与式采集，参与者扮演甲公司经理，并依据每日可见状态填写贷款、采购和定价动作；第二类来自同一仿真接口下的大模型辅助批量采集，该采集过程仍经过环境执行、动作边界检查和存活天数筛选。两类数据均以生产企业的状态-动作对保存，并用于后续 GAIL 与 TD3 训练。
+  p align=None before=None after=None line=None
+  run font=None size=None bold=None italic=None
+P[24] Normal: 在数据结构上，专家样本以状态-动作对表示。每条记录的前 33 个字段为生产企业主体在决策时可观测的状态信息，后 4 个字段为对应动作。4 个动作分别表示贷款意愿 WNDF、原料A采购需求、原料B采购需求和产品A定价。网页实验系统允许参与者输入具有业务含义的原始数值，并在保存专家样本时转换为模型训练所需的连续动作取值。该处理使人工输入能够进入 GAIL 与 TD3 的统一训练数据格式。
+  p align=None before=None after=None line=None
+  run font=None size=None bold=None italic=None
+P[25] Heading 1: 3 基于生成对抗模仿学习与TD3的主体训练方案
+  p align=LEFT (0) before=127000 after=76200 line=1.25
+  run font=Times New Roman size=152400 bold=True italic=None
+P[26] Heading 2: 3.1 模型训练方案
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[31] Heading 2: 3.2 状态、动作与经验样本
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[40] Heading 2: 3.3 判别器目标与模仿奖励构造
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[48] Heading 2: 3.4 融合奖励与TD3参数更新
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[62] Heading 1: 4 基于Transformer表征增强的GAIL+TD3主体训练方案
+  p align=LEFT (0) before=127000 after=76200 line=1.25
+  run font=Times New Roman size=152400 bold=True italic=None
+P[63] Heading 2: 4.1 时序状态表征的引入动机
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[67] Heading 2: 4.2 Transformer 编码器结构
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[86] Heading 2: 4.3 表征增强模块的训练接入与方法边界
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[92] Heading 1: 5 专家数据采集系统与数据整理
+  p align=LEFT (0) before=127000 after=76200 line=1.25
+  run font=Times New Roman size=152400 bold=True italic=None
+P[93] Heading 2: 5.1 专家数据来源与采集边界
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[96] Heading 2: 5.2 网页实验系统设计
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[107] Heading 2: 5.3 大模型辅助批量采集方法
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[111] Heading 2: 5.4 数据筛选与专家样本文件整理
+  p align=LEFT (0) before=76200 after=50800 line=1.25
+  run font=Times New Roman size=133350 bold=True italic=None
+P[115] Heading 1: 6  实验设置与结果分析
+  p align=LEFT (0) before=127000 after=76200 line=1.25
+  run font=Times New Roman size=152400 bold=True italic=None
+
+TABLE0
+cell 1,1: 33 维状态向量：包含经营状态、需求信息、交易记录、价格信息和时间状态变量
+  run font=Times New Roman size=114300 bold=False italic=None
+cell 1,2: 4 维连续动作：贷款意愿、生产资料购买意愿、消费品购买意愿、次日定价
+  run font=Times New Roman size=114300 bold=False italic=None
+cell 2,1: 51 维状态向量：包含银行经营状态与企业主体信息
+  run font=Times New Roman size=114300 bold=False italic=None
+cell 2,2: 2 维连续动作：向生产企业和消费企业发放贷款的意愿
+  run font=Times New Roman size=114300 bold=False italic=None

@@ -1,0 +1,10 @@
+{
+  "run": "run-20260622_080822-vx1bs5edgj8z9ihb6xe1x",
+  "seed": "652",
+  "metric_counts": {
+    "survival": 60,
+    "production": 60,
+    "consumption": 60,
+    "bank": 60
+  }
+}

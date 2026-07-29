@@ -100,7 +100,6 @@ def main() -> None:
     ax_bar.set_xticks(range(len(ORDER)))
     ax_bar.set_xticklabels(LABELS)
     ax_bar.set_ylabel("占比（%）", labelpad=10)
-    ax_bar.set_title("DSCR < 1 的企业日占比", pad=10)
     style_axis(ax_bar)
 
     label_offset = bar_upper * 0.025
@@ -119,7 +118,7 @@ def main() -> None:
         left=0.13,
         right=0.98,
         bottom=0.14,
-        top=0.91,
+        top=0.98,
     )
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
