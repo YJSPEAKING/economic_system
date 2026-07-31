@@ -8,10 +8,17 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import swanlab
 import torch
+import pandas as pd
 
 import real_System_remake.Environment as environment_module
 import real_System_remake.System as system_module
@@ -25,12 +32,22 @@ from real_System_remake.final_gail_statistical_eval import (
 
 SEEDS = (184, 652, 187)
 CHECKPOINT_ROOT = (
-    Path(__file__).resolve().parent / "checkpoints" / "final_weights" / "GAIL+TD3"
+    Path(__file__).resolve().parent
+    / "checkpoints"
+    / "final_weights"
+    / "GAIL+TD3_balanced_discriminator"
 )
 SUPPLEMENTARY_EXPERIMENT_NOTES = (
-    "online GAIL+TD3 supplementary experiment: episode-level 80/20 expert split; "
-    "save final production Actor and discriminator; evaluate expert, Actor, and "
-    "uniform-random actions on held-out expert episodes (seeds 184, 652, 187)"
+    "online GAIL+TD3 supplementary experiment: episode-level 80/10/10 expert "
+    "train/validation/final-test split; recent-policy discriminator batches, "
+    "normalized environment reward, -log(1-D) imitation reward, differentiable "
+    "Actor adversarial loss, validation-selected checkpoints, and production "
+    "Actor snapshots at every 100-episode evaluation step; final evaluation of "
+    "expert, Actor, and uniform-random actions (seeds 184, 652, 187)"
+)
+MINIMUM_ACTOR_SNAPSHOT_COUNT = (
+    system_module.min_logged_episode
+    // system_module.actor_snapshot_interval_episodes
 )
 
 
@@ -39,11 +56,37 @@ def checkpoint_is_complete(seed: int) -> bool:
     required = (
         "production1_actor.pth",
         "discriminator.pth",
+        "production1_actor_best_validation.pth",
+        "production1_critic_best_validation.pth",
+        "discriminator_best_validation.pth",
+        "best_validation_metrics.json",
+        "gail_validation_history.json",
         "obs_rms_params.pth",
         "expert_split.json",
         "config.json",
     )
-    return all((checkpoint_dir / name).is_file() for name in required)
+    if not all((checkpoint_dir / name).is_file() for name in required):
+        return False
+    snapshot_dir = checkpoint_dir / "actor_snapshots"
+    snapshot_manifest = snapshot_dir / "manifest.json"
+    if not snapshot_manifest.is_file():
+        return False
+    try:
+        snapshots = json.loads(snapshot_manifest.read_text(encoding="utf-8")).get(
+            "snapshots", []
+        )
+    except (OSError, ValueError, TypeError):
+        return False
+    evaluation_steps = [int(item["evaluation_step"]) for item in snapshots]
+    expected_steps = list(range(1, len(snapshots) + 1))
+    return (
+        len(snapshots) >= MINIMUM_ACTOR_SNAPSHOT_COUNT
+        and evaluation_steps == expected_steps
+        and all(
+            (snapshot_dir / item["actor_checkpoint"]).is_file()
+            for item in snapshots
+        )
+    )
 
 
 def train_seed(seed: int) -> None:
@@ -116,6 +159,33 @@ def main() -> None:
 
     summary_path = write_summary(DEFAULT_OUTPUT_ROOT, SEEDS)
     print(f"[Done] summary saved to {summary_path}")
+    summary = pd.read_csv(summary_path)
+    actor_supported = summary[
+        "actor_indistinguishable_score_criteria_holm"
+    ].astype(str).str.lower().eq("true")
+    random_supported = summary[
+        "random_distinguishable_score_criteria_holm"
+    ].astype(str).str.lower().eq("true")
+    unsupported = summary.loc[
+        ~(actor_supported & random_supported),
+        [
+            "seed",
+            "actor_auc",
+            "actor_p_equivalence_holm",
+            "random_auc",
+            "random_p_difference_holm",
+        ],
+    ]
+    if not unsupported.empty:
+        raise RuntimeError(
+            "The prespecified conclusions are not supported for every seed. "
+            "Inspect these rows before changing the model or protocol:\n"
+            + unsupported.to_string(index=False)
+        )
+    print(
+        "[Conclusion gate] all seeds support Actor/expert score equivalence "
+        "and expert/random score separation under the prespecified tests."
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+{
+  "all_seeds_support_expert_noisy_expert_separation": true,
+  "criterion": "For every seed: Holm-adjusted paired permutation p < 0.05 and cluster-bootstrap 95% ROC-AUC lower bound > 0.5.",
+  "seed_results": {
+    "184": true,
+    "187": true,
+    "652": true
+  }
+}

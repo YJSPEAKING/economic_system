@@ -1,6 +1,6 @@
 """Evaluate final online-GAIL Actor and discriminator checkpoints.
 
-The evaluator uses only held-out expert episodes.  For every held-out expert
+The evaluator uses only final-test expert episodes.  For every final-test expert
 state it compares the discriminator score assigned to the recorded expert
 action, the deterministic production Actor action, and a uniform-random
 action.  All paired inputs and scores are saved for reproducibility.
@@ -36,8 +36,12 @@ except ModuleNotFoundError:
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CHECKPOINT_ROOT = PROJECT_DIR / "checkpoints" / "final_weights" / "GAIL+TD3"
-DEFAULT_OUTPUT_ROOT = PROJECT_DIR / "analysis_plots" / "final_gail_discriminator_eval"
+DEFAULT_CHECKPOINT_ROOT = (
+    PROJECT_DIR / "checkpoints" / "final_weights" / "GAIL+TD3_balanced_discriminator"
+)
+DEFAULT_OUTPUT_ROOT = (
+    PROJECT_DIR / "analysis_plots" / "final_gail_discriminator_eval_balanced_training"
+)
 DEFAULT_EXPERT_CSV = PROJECT_DIR / "expert_data_production1_collected.csv"
 DEFAULT_SEEDS = (184, 652, 187)
 
@@ -324,12 +328,17 @@ def _load_held_out_expert_data(
         "expert_csv_sha256",
         "split_unit",
         "split_seed",
+        "train_fraction_requested",
+        "validation_fraction_requested",
         "test_fraction_requested",
         "total_episodes",
         "train_episodes",
+        "validation_episodes",
         "test_episodes",
         "train_rows",
+        "validation_rows",
         "test_rows",
+        "validation_episode_ids",
         "test_episode_ids",
     )
     mismatches = [
@@ -511,13 +520,15 @@ def evaluate_seed(
     checkpoint_dir = Path(checkpoint_root) / f"seed_{seed}"
     output_dir = Path(output_root) / f"seed_{seed}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    actor_path = checkpoint_dir / "production1_actor.pth"
-    discriminator_path = checkpoint_dir / "discriminator.pth"
+    actor_path = checkpoint_dir / "production1_actor_best_validation.pth"
+    discriminator_path = checkpoint_dir / "discriminator_best_validation.pth"
+    validation_metrics_path = checkpoint_dir / "best_validation_metrics.json"
     rms_path = checkpoint_dir / "obs_rms_params.pth"
     split_manifest_path = checkpoint_dir / "expert_split.json"
     required = (
         actor_path,
         discriminator_path,
+        validation_metrics_path,
         rms_path,
         split_manifest_path,
         Path(expert_csv),
@@ -534,6 +545,8 @@ def evaluate_seed(
     actor.eval()
     discriminator.eval()
     rms = _load_rms(rms_path, device)
+    with validation_metrics_path.open("r", encoding="utf-8") as stream:
+        validation_metrics = json.load(stream)
 
     source_rows, episode_labels, evaluation_data, split_metadata = (
         _load_held_out_expert_data(Path(expert_csv), split_manifest_path)
@@ -600,12 +613,12 @@ def evaluate_seed(
         "seed": int(seed),
         "checkpoint_dir": str(checkpoint_dir.resolve()),
         "expert_csv": str(Path(expert_csv).resolve()),
-        "evaluation_partition": "held_out_complete_expert_episodes",
+        "evaluation_partition": "final_test_complete_expert_episodes",
         "action_bound": float(action_bound),
         "histogram_bins_for_js": int(bins),
         "metric_random_seed": int(metric_random_seed + int(seed)),
-        "statistical_unit_for_inference": "held_out_expert_episode",
-        "score_pairing": "same_held_out_expert_state_across_all_action_sources",
+        "statistical_unit_for_inference": "final_test_expert_episode",
+        "score_pairing": "same_final_test_expert_state_across_all_action_sources",
         "actor_primary_test": (
             "paired TOST on episode-mean score difference with equivalence margin "
             f"+/-{equivalence_margin:.6g}"
@@ -614,6 +627,10 @@ def evaluate_seed(
             "one-sided paired sign-flip permutation test on episode-mean score difference"
         ),
         "expert_split": split_metadata,
+        "checkpoint_selection": {
+            "partition": "validation_complete_expert_episodes",
+            "metrics": validation_metrics,
+        },
         "expert": {
             "count": int(expert_scores.size),
             "episode_count": int(np.unique(episode_labels).size),
@@ -623,8 +640,9 @@ def evaluate_seed(
         "actor_vs_expert": actor_metrics,
         "random_vs_expert": random_metrics,
         "checkpoint_sha256": {
-            "production1_actor.pth": _sha256(actor_path),
-            "discriminator.pth": _sha256(discriminator_path),
+            "production1_actor_best_validation.pth": _sha256(actor_path),
+            "discriminator_best_validation.pth": _sha256(discriminator_path),
+            "best_validation_metrics.json": _sha256(validation_metrics_path),
             "obs_rms_params.pth": _sha256(rms_path),
             "expert_split.json": _sha256(split_manifest_path),
         },

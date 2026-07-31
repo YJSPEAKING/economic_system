@@ -65,6 +65,7 @@ use_rbtree = False
 max_episodes = 10000
 min_logged_episode = 6000
 max_total_sim_days = 180000
+actor_snapshot_interval_episodes = 100
 # Notice 如果修改lstm的隐藏层节点数量，需要去经验池get batch函数里同步修改
 enterprise_ddpg_config = Config(
     scope='',
@@ -83,6 +84,17 @@ enterprise_ddpg_config = Config(
     gail_reward_weight=2.0,
     gail_warmup_steps=5000,
     disc_update_ratio=1,
+    disc_update_interval=3,
+    gail_recent_buffer_capacity=20000,
+    gail_env_reward_ema_decay=0.99,
+    gail_env_reward_clip=5.0,
+    gail_imitation_reward_clip=5.0,
+    gail_action_std_floor=0.10,
+    gail_disc_entropy_coef=1e-3,
+    gail_actor_adv_weight=1.0,
+    gail_validation_start_steps=20000,
+    gail_validation_interval=5000,
+    gail_validation_random_auc_min=0.80,
     smooth_noise=0.01,
     is_QNet_smooth_critic=True,
     soft_replace_tau=0.01,
@@ -199,13 +211,83 @@ class System:
         self.b_execute = self.env.get_bank_execute()
         self.execute = self.e_execute + self.b_execute
         self.Agent = {}
+        self.actor_snapshot_manifest = []
         for key in self.execute:
             self.Agent[key] = None
+
+    def save_production_actor_snapshot(self, completed_episode):
+        completed_episode = int(completed_episode)
+        if completed_episode <= 0 or completed_episode % actor_snapshot_interval_episodes != 0:
+            return None
+        production_agent = self.Agent.get("production1")
+        td3_agent = getattr(production_agent, "enterprise", None)
+        if td3_agent is None:
+            return None
+
+        checkpoint_dir = os.path.join(CHECKPOINT_ROOT, f"seed_{self.seed}")
+        snapshot_dir = os.path.join(checkpoint_dir, "actor_snapshots")
+        os.makedirs(snapshot_dir, exist_ok=True)
+        evaluation_step = completed_episode // actor_snapshot_interval_episodes
+        filename = (
+            f"evaluation_step_{evaluation_step:04d}_"
+            f"episode_{completed_episode:06d}.pth"
+        )
+        snapshot_path = os.path.join(snapshot_dir, filename)
+        actor_state = {
+            key: value.detach().cpu().clone()
+            for key, value in td3_agent.actor.state_dict().items()
+        }
+        torch.save(actor_state, snapshot_path)
+
+        record = {
+            "evaluation_step": evaluation_step,
+            "completed_environment_episode": completed_episode,
+            "td3_parameter_update_step": int(td3_agent.pointer),
+            "total_sim_days": int(self.epiday),
+            "actor_checkpoint": filename,
+        }
+        self.actor_snapshot_manifest = [
+            item
+            for item in self.actor_snapshot_manifest
+            if item["evaluation_step"] != evaluation_step
+        ]
+        self.actor_snapshot_manifest.append(record)
+        self.actor_snapshot_manifest.sort(key=lambda item: item["evaluation_step"])
+        manifest_path = os.path.join(snapshot_dir, "manifest.json")
+        temporary_path = manifest_path + ".tmp"
+        with open(temporary_path, "w", encoding="utf-8") as stream:
+            json.dump(
+                _json_safe(
+                    {
+                        "seed": self.seed,
+                        "snapshot_interval_episodes": actor_snapshot_interval_episodes,
+                        "timing": (
+                            "Snapshot saved after the displayed environment episode "
+                            "completed and before the next episode reset."
+                        ),
+                        "snapshots": self.actor_snapshot_manifest,
+                    }
+                ),
+                stream,
+                ensure_ascii=False,
+                indent=2,
+            )
+        os.replace(temporary_path, manifest_path)
+        print(
+            f"[Actor snapshot] seed={self.seed}, evaluation_step={evaluation_step}, "
+            f"episode={completed_episode}: {snapshot_path}"
+        )
+        return snapshot_path
 
     def save_final_checkpoints(self):
         checkpoint_dir = os.path.join(CHECKPOINT_ROOT, f"seed_{self.seed}")
         os.makedirs(checkpoint_dir, exist_ok=True)
         saved_files = {}
+        production_agent = self.Agent.get("production1")
+        if production_agent is not None and hasattr(
+            production_agent, "maybe_update_gail_validation"
+        ):
+            production_agent.maybe_update_gail_validation(force=True)
 
         for agent_name in ("production1", "consumption1"):
             agent = self.Agent.get(agent_name)
@@ -229,11 +311,54 @@ class System:
             saved_files["bank1_actor"] = actor_path
             saved_files["bank1_critic"] = critic_path
 
-        production_agent = self.Agent.get("production1")
         if production_agent is not None and hasattr(production_agent, "gail_disc"):
             disc_path = os.path.join(checkpoint_dir, "discriminator.pth")
             torch.save(production_agent.gail_disc.state_dict(), disc_path)
             saved_files["discriminator"] = disc_path
+
+        best_checkpoint = getattr(production_agent, "best_gail_checkpoint", None)
+        if best_checkpoint is not None:
+            best_actor_path = os.path.join(
+                checkpoint_dir, "production1_actor_best_validation.pth"
+            )
+            best_critic_path = os.path.join(
+                checkpoint_dir, "production1_critic_best_validation.pth"
+            )
+            best_disc_path = os.path.join(
+                checkpoint_dir, "discriminator_best_validation.pth"
+            )
+            torch.save(best_checkpoint["actor"], best_actor_path)
+            torch.save(best_checkpoint["critic"], best_critic_path)
+            torch.save(best_checkpoint["discriminator"], best_disc_path)
+            saved_files["production1_actor_best_validation"] = best_actor_path
+            saved_files["production1_critic_best_validation"] = best_critic_path
+            saved_files["discriminator_best_validation"] = best_disc_path
+
+            best_metrics_path = os.path.join(
+                checkpoint_dir, "best_validation_metrics.json"
+            )
+            with open(best_metrics_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    _json_safe(best_checkpoint["metrics"]),
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            saved_files["best_validation_metrics"] = best_metrics_path
+
+        validation_history = getattr(production_agent, "gail_validation_history", None)
+        if validation_history:
+            validation_history_path = os.path.join(
+                checkpoint_dir, "gail_validation_history.json"
+            )
+            with open(validation_history_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    _json_safe(validation_history),
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            saved_files["gail_validation_history"] = validation_history_path
 
         if production_agent is not None and hasattr(production_agent, "expert_split_metadata"):
             split_path = os.path.join(checkpoint_dir, "expert_split.json")
@@ -260,6 +385,12 @@ class System:
             )
             saved_files["obs_rms_params"] = obs_path
 
+        snapshot_manifest_path = os.path.join(
+            checkpoint_dir, "actor_snapshots", "manifest.json"
+        )
+        if os.path.isfile(snapshot_manifest_path):
+            saved_files["production1_actor_snapshots_manifest"] = snapshot_manifest_path
+
         config_path = os.path.join(checkpoint_dir, "config.json")
         saved_files["config"] = config_path
         config_payload = {
@@ -269,6 +400,8 @@ class System:
             "max_episodes": max_episodes,
             "min_logged_episode": min_logged_episode,
             "max_total_sim_days": max_total_sim_days,
+            "actor_snapshot_interval_episodes": actor_snapshot_interval_episodes,
+            "actor_snapshot_count": len(self.actor_snapshot_manifest),
             "enterprise_ddpg_config": enterprise_ddpg_config.__dict__,
             "bank_ddpg_config": bank_ddpg_config.__dict__,
             "enterprise_config": enterprise_config.__dict__,
@@ -411,6 +544,8 @@ class System:
                 state = next_state
                 last_action = action
                 last_reward_pro = reward_pro
+
+            self.save_production_actor_snapshot(self.env.episode)
 
         self.save_final_checkpoints()
         # self.env.finish()

@@ -18,6 +18,15 @@ class Config:
                  policy_noise: float = 0.2, discount: float = 0.99, max_hist_len=8, batch_lstm=256, update_every=50,
                  learn_start_steps: int = 1024, gail_reward_weight: float = 2.0,
                  gail_warmup_steps: int = 5000, disc_update_ratio: int = 1,
+                  disc_update_interval: int = 3, gail_recent_buffer_capacity: int = 20000,
+                  gail_env_reward_ema_decay: float = 0.99, gail_env_reward_clip: float = 5.0,
+                  gail_imitation_reward_clip: float = 5.0,
+                  gail_action_std_floor: float = 0.10,
+                  gail_disc_entropy_coef: float = 1e-3,
+                  gail_actor_adv_weight: float = 1.0,
+                  gail_validation_start_steps: int = 20000,
+                  gail_validation_interval: int = 5000,
+                  gail_validation_random_auc_min: float = 0.80,
                  critic_grad_clip: float = 0.0,
                  actor_grad_clip: float = 0.0, target_q_clip: float = 0.0,
                  critic_loss_type: str = 'mse', critic_huber_beta: float = 1.0,
@@ -62,6 +71,17 @@ class Config:
         self.GAIL_REWARD_WEIGHT = gail_reward_weight
         self.GAIL_WARMUP_STEPS = gail_warmup_steps
         self.DISC_UPDATE_RATIO = disc_update_ratio
+        self.DISC_UPDATE_INTERVAL = disc_update_interval
+        self.GAIL_RECENT_BUFFER_CAPACITY = gail_recent_buffer_capacity
+        self.GAIL_ENV_REWARD_EMA_DECAY = gail_env_reward_ema_decay
+        self.GAIL_ENV_REWARD_CLIP = gail_env_reward_clip
+        self.GAIL_IMITATION_REWARD_CLIP = gail_imitation_reward_clip
+        self.GAIL_ACTION_STD_FLOOR = gail_action_std_floor
+        self.GAIL_DISC_ENTROPY_COEF = gail_disc_entropy_coef
+        self.GAIL_ACTOR_ADV_WEIGHT = gail_actor_adv_weight
+        self.GAIL_VALIDATION_START_STEPS = gail_validation_start_steps
+        self.GAIL_VALIDATION_INTERVAL = gail_validation_interval
+        self.GAIL_VALIDATION_RANDOM_AUC_MIN = gail_validation_random_auc_min
         self.CRITIC_GRAD_CLIP = critic_grad_clip
         self.ACTOR_GRAD_CLIP = actor_grad_clip
         self.TARGET_Q_CLIP = target_q_clip

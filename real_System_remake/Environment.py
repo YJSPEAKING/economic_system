@@ -18,7 +18,12 @@ import os
 third_market_price = 100  # 环境中第三方市场的价格是固定100
 enterprise_price = 8  # 企业的初始价格是8
 DSCR_DUE_EPSILON = 1e-6
-SWANLAB_NOTES = "online GAIL+TD3 v1.27, 得到最终评价尺度，发现仍需修改"
+SWANLAB_NOTES = (
+    "online GAIL+TD3 supplementary validation: 80/10/10 episode split, "
+    "recent-policy discriminator batches, balanced reward scales, "
+    "Actor adversarial regularization, validation-selected checkpoints, and "
+    "production Actor snapshots saved at every 100-episode evaluation step"
+)
 
 swanlab_config = {
     'bank_ddpg_config': {

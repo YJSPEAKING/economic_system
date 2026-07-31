@@ -1,0 +1,103 @@
+{
+  "analysis": "phase_2_retrospective_historical_gail_evolution",
+  "seeds": [
+    184,
+    652,
+    187
+  ],
+  "device": "cuda",
+  "fixed_ruler": "Each seed uses discriminator_best_validation.pth, the same selected discriminator evaluated in phase 1.",
+  "expert_reference": "Complete expert episodes in the held-out final-test partition are scored by the corresponding fixed discriminator.",
+  "historical_generated_sample": "Logged production1 state-action pairs. Actions are behavior actions actually applied during training and include TD3 exploration noise.",
+  "normalization": "States and actions use the seed checkpoint's obs_rms_params.pth; states are clipped to [-5, 5] after normalization.",
+  "js_definition": "Squared scipy.spatial.distance.jensenshannon over 50 fixed bins on discriminator sigmoid scores in [0, 1].",
+  "per_episode_result": "One JS divergence is computed from each episode's score histogram and the fixed held-out expert score histogram.",
+  "pooled_window_result": "Histograms from each consecutive 100 episodes are pooled before JS calculation to reduce short-episode sampling noise.",
+  "trend_test": "Two-sided Spearman correlation between pooled-window index and JS. A negative coefficient denotes a descriptive downward trend; alpha=0.05 is used only for the reported correlation test.",
+  "discriminator_history": "The saved online validation history is deduplicated by TD3 update step and restricted to steps <=100000, after which parameter updates stopped.",
+  "interpretation_limit": "Fixed-discriminator historical JS measures evolution of the logged behavior distribution under a common ruler. It cannot by itself identify discriminator parameter evolution or deterministic Actor-only evolution.",
+  "configuration": {
+    "histogram_bins": 50,
+    "rolling_episode_count": 100,
+    "pooled_window_episode_count": 100,
+    "trajectory_chunk_size": 100000,
+    "score_batch_size": 32768
+  },
+  "inputs": [
+    {
+      "seed": 184,
+      "fixed_discriminator": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\checkpoints\\final_weights\\GAIL+TD3_balanced_discriminator\\seed_184\\discriminator_best_validation.pth",
+      "fixed_discriminator_sha256": "d6bd0871816e838e87c2f56995a00dc62d2071727c5f57518bab7e8c6d69438d",
+      "normalization_parameters": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\checkpoints\\final_weights\\GAIL+TD3_balanced_discriminator\\seed_184\\obs_rms_params.pth",
+      "normalization_parameters_sha256": "8fca87e2cfc537a0cd56edc824f3036064ba756ede57b88baf7a3bc137409a4a",
+      "expert_reference": {
+        "partition": "held_out_final_test_complete_expert_episodes",
+        "row_count": 16952,
+        "episode_count": 173,
+        "score_mean": 0.8988458413829382,
+        "score_std": 0.011210383064860139,
+        "expert_csv_sha256": "a2d3374d946dda5e854fb418782e939613d3b6b74d2ad0e114d424a5d12d2ed3"
+      },
+      "trajectory": {
+        "trajectory_path": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\trajectory_logs\\seed_184\\production1_daily_trajectory.csv",
+        "trajectory_size_bytes": 346141890,
+        "valid_scored_rows": 359291,
+        "dropped_nonfinite_rows": 0,
+        "episode_count": 6100,
+        "first_episode": 0,
+        "last_episode": 6099,
+        "episode_ids_contiguous": true
+      }
+    },
+    {
+      "seed": 652,
+      "fixed_discriminator": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\checkpoints\\final_weights\\GAIL+TD3_balanced_discriminator\\seed_652\\discriminator_best_validation.pth",
+      "fixed_discriminator_sha256": "3baf3a055fb5177adcf592d58635f878b78dd72c68cc7d4e3393e2b9881f2551",
+      "normalization_parameters": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\checkpoints\\final_weights\\GAIL+TD3_balanced_discriminator\\seed_652\\obs_rms_params.pth",
+      "normalization_parameters_sha256": "8fca87e2cfc537a0cd56edc824f3036064ba756ede57b88baf7a3bc137409a4a",
+      "expert_reference": {
+        "partition": "held_out_final_test_complete_expert_episodes",
+        "row_count": 16952,
+        "episode_count": 173,
+        "score_mean": 0.8979966168438224,
+        "score_std": 0.018121126123355088,
+        "expert_csv_sha256": "a2d3374d946dda5e854fb418782e939613d3b6b74d2ad0e114d424a5d12d2ed3"
+      },
+      "trajectory": {
+        "trajectory_path": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\trajectory_logs\\seed_652\\production1_daily_trajectory.csv",
+        "trajectory_size_bytes": 393756642,
+        "valid_scored_rows": 406933,
+        "dropped_nonfinite_rows": 0,
+        "episode_count": 6100,
+        "first_episode": 0,
+        "last_episode": 6099,
+        "episode_ids_contiguous": true
+      }
+    },
+    {
+      "seed": 187,
+      "fixed_discriminator": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\checkpoints\\final_weights\\GAIL+TD3_balanced_discriminator\\seed_187\\discriminator_best_validation.pth",
+      "fixed_discriminator_sha256": "e5562388a7d826a5f8eb068e7e7d96066b1fe8b71d5ea3137e1bc22079b06aed",
+      "normalization_parameters": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\checkpoints\\final_weights\\GAIL+TD3_balanced_discriminator\\seed_187\\obs_rms_params.pth",
+      "normalization_parameters_sha256": "8fca87e2cfc537a0cd56edc824f3036064ba756ede57b88baf7a3bc137409a4a",
+      "expert_reference": {
+        "partition": "held_out_final_test_complete_expert_episodes",
+        "row_count": 16952,
+        "episode_count": 173,
+        "score_mean": 0.8997743055189258,
+        "score_std": 0.0007073770248055144,
+        "expert_csv_sha256": "a2d3374d946dda5e854fb418782e939613d3b6b74d2ad0e114d424a5d12d2ed3"
+      },
+      "trajectory": {
+        "trajectory_path": "D:\\福州大学\\3.课外\\实验\\经济系统cleanclean\\经济系统clean\\real_System_remake\\trajectory_logs\\seed_187\\production1_daily_trajectory.csv",
+        "trajectory_size_bytes": 454557297,
+        "valid_scored_rows": 470511,
+        "dropped_nonfinite_rows": 0,
+        "episode_count": 6100,
+        "first_episode": 0,
+        "last_episode": 6099,
+        "episode_ids_contiguous": true
+      }
+    }
+  ]
+}

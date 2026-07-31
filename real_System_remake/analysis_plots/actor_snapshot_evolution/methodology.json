@@ -1,0 +1,18 @@
+{
+  "evaluation_design": "historical_deterministic_actor_snapshots_under_fixed_inputs",
+  "seeds": [
+    184,
+    652,
+    187
+  ],
+  "fixed_within_seed": [
+    "held-out final-test expert states",
+    "recorded expert actions",
+    "state and action normalization parameters",
+    "validation-selected final discriminator"
+  ],
+  "only_changing_component": "production-enterprise Actor snapshot",
+  "actor_action": "deterministic Actor output without exploration noise",
+  "js_definition": "Jensen-Shannon divergence over fixed-bin discriminator sigmoid-score histograms; bins=100.",
+  "interpretation": "A downward JS trajectory indicates that successive deterministic Actor outputs on the same held-out expert states become closer to recorded expert actions under the fixed discriminator's score representation."
+}

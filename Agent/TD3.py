@@ -114,6 +114,24 @@ class TD3(object):
         self.gail_reward_weight = getattr(config, 'GAIL_REWARD_WEIGHT', 2.0)
         self.gail_warmup_steps = max(1, getattr(config, 'GAIL_WARMUP_STEPS', 5000))
         self.disc_update_ratio = max(1, getattr(config, 'DISC_UPDATE_RATIO', 1))
+        self.disc_update_interval = max(1, getattr(config, 'DISC_UPDATE_INTERVAL', 3))
+        self.gail_env_reward_ema_decay = float(
+            getattr(config, 'GAIL_ENV_REWARD_EMA_DECAY', 0.99)
+        )
+        self.gail_env_reward_clip = float(getattr(config, 'GAIL_ENV_REWARD_CLIP', 5.0))
+        self.gail_imitation_reward_clip = float(
+            getattr(config, 'GAIL_IMITATION_REWARD_CLIP', 5.0)
+        )
+        self.gail_disc_entropy_coef = float(
+            getattr(config, 'GAIL_DISC_ENTROPY_COEF', 1e-3)
+        )
+        self.gail_actor_adv_weight = float(getattr(config, 'GAIL_ACTOR_ADV_WEIGHT', 1.0))
+        self.gail_env_reward_scale = 1.0
+        self.gail_env_reward_scale_initialized = False
+        self.gail_disc_loss = 0.0
+        self.gail_actor_adv_loss = 0.0
+        self.gail_imitation_reward_mean = 0.0
+        self.gail_environment_reward_mean = 0.0
         self.critic_grad_clip = float(getattr(config, 'CRITIC_GRAD_CLIP', 0.0))
         self.actor_grad_clip = float(getattr(config, 'ACTOR_GRAD_CLIP', 0.0))
         self.target_q_clip = float(getattr(config, 'TARGET_Q_CLIP', 0.0))
@@ -319,12 +337,17 @@ class TD3(object):
         if (not tranLock) or self.pointer < self.var_end_at:
 
             # ==========================================
-            # 🚀 阶段三：判别器在线对抗更新 (加强版 - 增加更新步数比)
+            # Update the discriminator on recent policy samples at a controlled interval.
             # ==========================================
-            # 设置步数比 n:1，这里 n=3 代表判别器学3次，Actor/Critic才学1次
+            # disc_update_ratio controls repeated discriminator steps at each update point.
             disc_update_ratio = self.disc_update_ratio
+            should_update_disc = self.update_cnt % self.disc_update_interval == 0
 
-            if hasattr(self, 'gail_disc') and hasattr(self, 'sample_expert'):
+            if (
+                should_update_disc
+                and hasattr(self, 'gail_disc')
+                and hasattr(self, 'sample_expert')
+            ):
                 # 开启循环“加练”模式
                 for _ in range(disc_update_ratio):
                     expert_s, expert_a = self.sample_expert(self.BATCH_SIZE)
@@ -334,23 +357,48 @@ class TD3(object):
                                                  5.0)
                         expert_a_n = (expert_a - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
-                        # 注意：这里直接用 self.memory.sample 重新抽样，
-                        # 或者为了性能，也可以复用外层 b_s/b_a
-                        b_a_tensor = torch.as_tensor(b_a, dtype=torch.float32, device=device)
-                        fake_a_n = (b_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
-                        fake_s_n = b_s_tensor
+                        # Prefer recent on-policy-like samples over stale full-replay samples.
+                        if hasattr(self, 'sample_recent_policy'):
+                            policy_s, policy_a = self.sample_recent_policy(self.BATCH_SIZE)
+                        else:
+                            policy_s, policy_a = b_s_tensor, b_a_tensor
+                        if policy_s is None:
+                            continue
+
+                        policy_s_n = torch.as_tensor(
+                            policy_s, dtype=torch.float32, device=device
+                        ).detach()
+                        policy_a_tensor = torch.as_tensor(
+                            policy_a, dtype=torch.float32, device=device
+                        ).detach()
+                        policy_a_n = (policy_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
 
                         # 2. 对抗学习
                         self.disc_optimizer.zero_grad()
                         real_logits = self.gail_disc(expert_s_n, expert_a_n)
-                        fake_logits = self.gail_disc(fake_s_n, fake_a_n)
+                        fake_logits = self.gail_disc(policy_s_n, policy_a_n)
 
                         loss_D_real = F.binary_cross_entropy_with_logits(real_logits, torch.full_like(real_logits, 0.9))
                         loss_D_fake = F.binary_cross_entropy_with_logits(fake_logits, torch.full_like(fake_logits, 0.1))
 
-                        loss_D = loss_D_real + loss_D_fake
+                        real_prob = torch.sigmoid(real_logits)
+                        fake_prob = torch.sigmoid(fake_logits)
+                        real_entropy = -(
+                            real_prob * torch.log(real_prob.clamp_min(1e-8))
+                            + (1.0 - real_prob) * torch.log((1.0 - real_prob).clamp_min(1e-8))
+                        ).mean()
+                        fake_entropy = -(
+                            fake_prob * torch.log(fake_prob.clamp_min(1e-8))
+                            + (1.0 - fake_prob) * torch.log((1.0 - fake_prob).clamp_min(1e-8))
+                        ).mean()
+                        loss_D = (
+                            loss_D_real
+                            + loss_D_fake
+                            - self.gail_disc_entropy_coef * (real_entropy + fake_entropy)
+                        )
                         loss_D.backward()
                         self.disc_optimizer.step()
+                        self.gail_disc_loss = float(loss_D.detach().cpu())
             # ==========================================
 
             with torch.no_grad():
@@ -372,16 +420,44 @@ class TD3(object):
                 b_r_tensor_fused = b_r_tensor
 
                 # 如果挂载了判别器，用它对刚抽样出的 b_s 和 b_a 进行实时打分
-                if hasattr(self, 'gail_disc') and 'fake_s_n' in locals():
-                    # fake_s_n 和 fake_a_n 在上面的判别器更新块里已经标准化过了
-                    disc_logits = self.gail_disc(fake_s_n, fake_a_n)
-                    # 采用 Sigmoid 将分数平滑限制在 0~1 之间，绝对不会造成 Q 值爆炸
-                    dynamic_r_int = torch.sigmoid(disc_logits)
+                if hasattr(self, 'gail_disc'):
+                    # The imitation reward is computed on the Critic replay batch.
+                    replay_action_n = (b_a_tensor - self.act_mean) / torch.sqrt(self.act_var + 1e-8)
+                    disc_logits = self.gail_disc(b_s_tensor, replay_action_n)
+                    # Use the non-saturating GAIL reward and clip its upper tail.
+                    disc_prob = torch.sigmoid(disc_logits)
+                    dynamic_r_int = -torch.log((1.0 - disc_prob).clamp_min(1e-6))
+                    if self.gail_imitation_reward_clip > 0:
+                        dynamic_r_int = torch.clamp(
+                            dynamic_r_int, max=self.gail_imitation_reward_clip
+                        )
 
                     # 此时的融合权重 w_gail。建议从 1.0 或 2.0 开始试。
+                    batch_reward_scale = max(
+                        float(torch.sqrt(torch.mean(b_r_tensor.pow(2))).cpu()), 1.0
+                    )
+                    if self.gail_env_reward_scale_initialized:
+                        decay = self.gail_env_reward_ema_decay
+                        self.gail_env_reward_scale = (
+                            decay * self.gail_env_reward_scale
+                            + (1.0 - decay) * batch_reward_scale
+                        )
+                    else:
+                        self.gail_env_reward_scale = batch_reward_scale
+                        self.gail_env_reward_scale_initialized = True
+
+                    normalized_env_reward = b_r_tensor / self.gail_env_reward_scale
+                    if self.gail_env_reward_clip > 0:
+                        normalized_env_reward = torch.clamp(
+                            normalized_env_reward,
+                            -self.gail_env_reward_clip,
+                            self.gail_env_reward_clip,
+                        )
                     gail_scale = min(1.0, train_age / self.gail_warmup_steps)
                     w_gail = self.gail_reward_weight * gail_scale
-                    b_r_tensor_fused = b_r_tensor + w_gail * dynamic_r_int
+                    b_r_tensor_fused = normalized_env_reward + w_gail * dynamic_r_int
+                    self.gail_imitation_reward_mean = float(dynamic_r_int.mean().cpu())
+                    self.gail_environment_reward_mean = float(normalized_env_reward.mean().cpu())
                 # ==========================================
 
                 # 计算 target Q 值
@@ -408,19 +484,61 @@ class TD3(object):
             # 延迟策略更新
             if self.update_cnt % self.policy_target_update_interval == 0:
                 # ==========================================
-                # 🚀 纯粹的 Actor 更新 (Pure Actor)
-                # Actor 绝不接触专家数据，仅通过最大化 Critic 的 Q 值来进化！
+                # Update the Actor with the TD3 objective and adversarial generator loss.
                 # ==========================================
-                actor_Q = self.critic.Q1(b_s_tensor, self.actor(b_s_tensor))
+                actor_actions = self.actor(b_s_tensor)
+                actor_Q = self.critic.Q1(b_s_tensor, actor_actions)
                 if self.actor_q_clip > 0:
                     actor_Q = torch.clamp(actor_Q, -self.actor_q_clip, self.actor_q_clip)
                 self.actor_loss = -actor_Q.mean()
+
+                if hasattr(self, 'gail_disc') and self.gail_actor_adv_weight > 0:
+                    for parameter in self.gail_disc.parameters():
+                        parameter.requires_grad_(False)
+                    actor_action_n = (actor_actions - self.act_mean) / torch.sqrt(
+                        self.act_var + 1e-8
+                    )
+                    actor_logits = self.gail_disc(b_s_tensor, actor_action_n)
+                    replay_actor_adv_loss = F.binary_cross_entropy_with_logits(
+                        actor_logits, torch.full_like(actor_logits, 0.9)
+                    )
+                    actor_adv_loss = replay_actor_adv_loss
+                    if hasattr(self, 'sample_expert'):
+                        actor_expert_s, _ = self.sample_expert(self.BATCH_SIZE)
+                        if actor_expert_s is not None:
+                            actor_expert_s_n = torch.clamp(
+                                (actor_expert_s - self.obs_mean)
+                                / torch.sqrt(self.obs_var + 1e-8),
+                                -5.0,
+                                5.0,
+                            )
+                            actor_on_expert_s = self.actor(actor_expert_s_n)
+                            actor_on_expert_a_n = (
+                                actor_on_expert_s - self.act_mean
+                            ) / torch.sqrt(self.act_var + 1e-8)
+                            expert_state_actor_logits = self.gail_disc(
+                                actor_expert_s_n, actor_on_expert_a_n
+                            )
+                            expert_state_actor_loss = F.binary_cross_entropy_with_logits(
+                                expert_state_actor_logits,
+                                torch.full_like(expert_state_actor_logits, 0.9),
+                            )
+                            actor_adv_loss = 0.5 * (
+                                replay_actor_adv_loss + expert_state_actor_loss
+                            )
+                    self.actor_loss = (
+                        self.actor_loss + self.gail_actor_adv_weight * actor_adv_loss
+                    )
+                    self.gail_actor_adv_loss = float(actor_adv_loss.detach().cpu())
 
                 self.actor_optimizer.zero_grad()
                 self.actor_loss.backward()
                 if self.actor_grad_clip > 0:
                     torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.actor_grad_clip)
                 self.actor_optimizer.step()
+                if hasattr(self, 'gail_disc'):
+                    for parameter in self.gail_disc.parameters():
+                        parameter.requires_grad_(True)
 
                 # soft update
                 #   Critic
