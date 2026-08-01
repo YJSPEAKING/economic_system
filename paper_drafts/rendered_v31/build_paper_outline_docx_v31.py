@@ -913,6 +913,35 @@ def update_transitions_and_metric_count(document: Document) -> None:
     )
 
 
+def update_chapter_two(document: Document) -> None:
+    replace_paragraph_text(
+        find_paragraph(document, "2  仿真环境、目标与主体决策建模问题"),
+        "2  仿真环境、目标与主体决策问题",
+    )
+    replace_paragraph_text(
+        find_paragraph(document, "2.2  主体决策建模"),
+        "2.2  主体决策问题",
+    )
+    replace_paragraph_text(
+        find_paragraph(document, "决策模型是智能主体建立“从观察到行动”映射的计算结构"),
+        "在上述仿真环境中，企业主体和银行主体需要依据各自在当前决策阶段能够观测到的信息，从连续动作空间中确定经营决策。企业决策直接作用于贷款申请、商品采购和产品定价，银行决策直接作用于贷款配置；各主体动作经过贷款、交易、生产和结算环节共同改变系统状态。因此，主体决策问题可以表述为：在多主体持续交互和局部信息约束下，根据当前可观测状态确定连续动作，并使动作与后续环境演化相衔接。",
+    )
+    replace_paragraph_text(
+        find_paragraph(document, "在进行上述决策时，主体能够利用的信息主要来自自身经营状态"),
+        "上述主体决策问题具有连续动作、多主体耦合和时序依赖等特征。各主体在同一天作出的决策通过信贷和商品交易相互作用，并共同影响后续现金、库存、债务和市场价格状态；同一主体的当前可观测状态又由此前多个阶段的交互结果累积形成。决策机制需要在既定状态空间和动作空间下处理当前信息，并对持续交互过程中的历史关联进行表达。第3章和第4章分别给出单步状态输入下的生产企业训练方案及其历史状态表征扩展。",
+    )
+    for table in document.tables:
+        if not table.rows or len(table.rows[0].cells) != 3:
+            continue
+        header = [cell.text.strip() for cell in table.rows[0].cells]
+        if header == ["主体", "Actor 输入", "Actor 输出"]:
+            replace_paragraph_text(table.cell(0, 1).paragraphs[0], "状态输入")
+            replace_paragraph_text(table.cell(0, 2).paragraphs[0], "动作输出")
+            break
+    else:
+        raise RuntimeError("Unable to locate Table 2-1 state-action headers.")
+
+
 def restructure_chapter_three(document: Document) -> None:
     training_heading = find_paragraph(document, "3.1 模型训练方案")
     sample_heading = find_paragraph(document, "3.2 状态、动作与经验样本")
@@ -1105,6 +1134,10 @@ def verify(document: Document, source_equation_count: int) -> None:
         if value not in text:
             raise RuntimeError(f"Required content is missing: {value}")
     forbidden = (
+        "2  仿真环境、目标与主体决策建模问题",
+        "2.2  主体决策建模",
+        "决策模型是智能主体建立“从观察到行动”映射的计算结构",
+        "如果模型需要进一步利用历史信息",
         "3.1 模型训练方案",
         "3.2 状态、动作与经验样本",
         "6.3 GAIL+TD3与Transformer+GAIL+TD3的结果对比",
@@ -1164,6 +1197,7 @@ def build() -> None:
     source_equation_count = len(document.element.body.xpath(".//m:oMath"))
     renumber_existing_section(document)
     update_transitions_and_metric_count(document)
+    update_chapter_two(document)
     insert_metric_definition(document)
     insert_component_validation_section(document)
     restructure_chapter_three(document)
