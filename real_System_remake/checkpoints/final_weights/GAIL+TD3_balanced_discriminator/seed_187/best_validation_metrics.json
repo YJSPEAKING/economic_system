@@ -1,0 +1,13 @@
+{
+  "training_step": 40000,
+  "expert_mean": 0.8997496962547302,
+  "actor_mean": 0.8866790533065796,
+  "random_mean": 0.4330514073371887,
+  "actor_auc": 0.5497842574713501,
+  "random_auc": 0.9463167060333243,
+  "actor_js_distance": 0.3731215777558852,
+  "random_js_distance": 0.7311208967280081,
+  "random_auc_minimum": 0.8,
+  "random_auc_requirement_met": true,
+  "selection_score": 0.0628549004195007
+}

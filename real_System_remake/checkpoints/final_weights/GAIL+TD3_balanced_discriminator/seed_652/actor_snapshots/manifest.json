@@ -1,0 +1,427 @@
+{
+  "seed": 652,
+  "snapshot_interval_episodes": 100,
+  "timing": "Snapshot saved after the displayed environment episode completed and before the next episode reset.",
+  "snapshots": [
+    {
+      "evaluation_step": 1,
+      "completed_environment_episode": 100,
+      "td3_parameter_update_step": 512,
+      "total_sim_days": 613,
+      "actor_checkpoint": "evaluation_step_0001_episode_000100.pth"
+    },
+    {
+      "evaluation_step": 2,
+      "completed_environment_episode": 200,
+      "td3_parameter_update_step": 976,
+      "total_sim_days": 1177,
+      "actor_checkpoint": "evaluation_step_0002_episode_000200.pth"
+    },
+    {
+      "evaluation_step": 3,
+      "completed_environment_episode": 300,
+      "td3_parameter_update_step": 1444,
+      "total_sim_days": 1745,
+      "actor_checkpoint": "evaluation_step_0003_episode_000300.pth"
+    },
+    {
+      "evaluation_step": 4,
+      "completed_environment_episode": 400,
+      "td3_parameter_update_step": 2013,
+      "total_sim_days": 2414,
+      "actor_checkpoint": "evaluation_step_0004_episode_000400.pth"
+    },
+    {
+      "evaluation_step": 5,
+      "completed_environment_episode": 500,
+      "td3_parameter_update_step": 2664,
+      "total_sim_days": 3165,
+      "actor_checkpoint": "evaluation_step_0005_episode_000500.pth"
+    },
+    {
+      "evaluation_step": 6,
+      "completed_environment_episode": 600,
+      "td3_parameter_update_step": 3400,
+      "total_sim_days": 4001,
+      "actor_checkpoint": "evaluation_step_0006_episode_000600.pth"
+    },
+    {
+      "evaluation_step": 7,
+      "completed_environment_episode": 700,
+      "td3_parameter_update_step": 4253,
+      "total_sim_days": 4954,
+      "actor_checkpoint": "evaluation_step_0007_episode_000700.pth"
+    },
+    {
+      "evaluation_step": 8,
+      "completed_environment_episode": 800,
+      "td3_parameter_update_step": 5227,
+      "total_sim_days": 6028,
+      "actor_checkpoint": "evaluation_step_0008_episode_000800.pth"
+    },
+    {
+      "evaluation_step": 9,
+      "completed_environment_episode": 900,
+      "td3_parameter_update_step": 6303,
+      "total_sim_days": 7204,
+      "actor_checkpoint": "evaluation_step_0009_episode_000900.pth"
+    },
+    {
+      "evaluation_step": 10,
+      "completed_environment_episode": 1000,
+      "td3_parameter_update_step": 7435,
+      "total_sim_days": 8436,
+      "actor_checkpoint": "evaluation_step_0010_episode_001000.pth"
+    },
+    {
+      "evaluation_step": 11,
+      "completed_environment_episode": 1100,
+      "td3_parameter_update_step": 8596,
+      "total_sim_days": 9697,
+      "actor_checkpoint": "evaluation_step_0011_episode_001100.pth"
+    },
+    {
+      "evaluation_step": 12,
+      "completed_environment_episode": 1200,
+      "td3_parameter_update_step": 10251,
+      "total_sim_days": 11452,
+      "actor_checkpoint": "evaluation_step_0012_episode_001200.pth"
+    },
+    {
+      "evaluation_step": 13,
+      "completed_environment_episode": 1300,
+      "td3_parameter_update_step": 11904,
+      "total_sim_days": 13205,
+      "actor_checkpoint": "evaluation_step_0013_episode_001300.pth"
+    },
+    {
+      "evaluation_step": 14,
+      "completed_environment_episode": 1400,
+      "td3_parameter_update_step": 14246,
+      "total_sim_days": 15647,
+      "actor_checkpoint": "evaluation_step_0014_episode_001400.pth"
+    },
+    {
+      "evaluation_step": 15,
+      "completed_environment_episode": 1500,
+      "td3_parameter_update_step": 18967,
+      "total_sim_days": 20468,
+      "actor_checkpoint": "evaluation_step_0015_episode_001500.pth"
+    },
+    {
+      "evaluation_step": 16,
+      "completed_environment_episode": 1600,
+      "td3_parameter_update_step": 26059,
+      "total_sim_days": 27660,
+      "actor_checkpoint": "evaluation_step_0016_episode_001600.pth"
+    },
+    {
+      "evaluation_step": 17,
+      "completed_environment_episode": 1700,
+      "td3_parameter_update_step": 33739,
+      "total_sim_days": 35440,
+      "actor_checkpoint": "evaluation_step_0017_episode_001700.pth"
+    },
+    {
+      "evaluation_step": 18,
+      "completed_environment_episode": 1800,
+      "td3_parameter_update_step": 41856,
+      "total_sim_days": 43657,
+      "actor_checkpoint": "evaluation_step_0018_episode_001800.pth"
+    },
+    {
+      "evaluation_step": 19,
+      "completed_environment_episode": 1900,
+      "td3_parameter_update_step": 51270,
+      "total_sim_days": 53171,
+      "actor_checkpoint": "evaluation_step_0019_episode_001900.pth"
+    },
+    {
+      "evaluation_step": 20,
+      "completed_environment_episode": 2000,
+      "td3_parameter_update_step": 59490,
+      "total_sim_days": 61491,
+      "actor_checkpoint": "evaluation_step_0020_episode_002000.pth"
+    },
+    {
+      "evaluation_step": 21,
+      "completed_environment_episode": 2100,
+      "td3_parameter_update_step": 68768,
+      "total_sim_days": 70869,
+      "actor_checkpoint": "evaluation_step_0021_episode_002100.pth"
+    },
+    {
+      "evaluation_step": 22,
+      "completed_environment_episode": 2200,
+      "td3_parameter_update_step": 76847,
+      "total_sim_days": 79048,
+      "actor_checkpoint": "evaluation_step_0022_episode_002200.pth"
+    },
+    {
+      "evaluation_step": 23,
+      "completed_environment_episode": 2300,
+      "td3_parameter_update_step": 84648,
+      "total_sim_days": 86949,
+      "actor_checkpoint": "evaluation_step_0023_episode_002300.pth"
+    },
+    {
+      "evaluation_step": 24,
+      "completed_environment_episode": 2400,
+      "td3_parameter_update_step": 91406,
+      "total_sim_days": 93807,
+      "actor_checkpoint": "evaluation_step_0024_episode_002400.pth"
+    },
+    {
+      "evaluation_step": 25,
+      "completed_environment_episode": 2500,
+      "td3_parameter_update_step": 99899,
+      "total_sim_days": 102400,
+      "actor_checkpoint": "evaluation_step_0025_episode_002500.pth"
+    },
+    {
+      "evaluation_step": 26,
+      "completed_environment_episode": 2600,
+      "td3_parameter_update_step": 108360,
+      "total_sim_days": 110961,
+      "actor_checkpoint": "evaluation_step_0026_episode_002600.pth"
+    },
+    {
+      "evaluation_step": 27,
+      "completed_environment_episode": 2700,
+      "td3_parameter_update_step": 116793,
+      "total_sim_days": 119494,
+      "actor_checkpoint": "evaluation_step_0027_episode_002700.pth"
+    },
+    {
+      "evaluation_step": 28,
+      "completed_environment_episode": 2800,
+      "td3_parameter_update_step": 124740,
+      "total_sim_days": 127541,
+      "actor_checkpoint": "evaluation_step_0028_episode_002800.pth"
+    },
+    {
+      "evaluation_step": 29,
+      "completed_environment_episode": 2900,
+      "td3_parameter_update_step": 133118,
+      "total_sim_days": 136019,
+      "actor_checkpoint": "evaluation_step_0029_episode_002900.pth"
+    },
+    {
+      "evaluation_step": 30,
+      "completed_environment_episode": 3000,
+      "td3_parameter_update_step": 141520,
+      "total_sim_days": 144521,
+      "actor_checkpoint": "evaluation_step_0030_episode_003000.pth"
+    },
+    {
+      "evaluation_step": 31,
+      "completed_environment_episode": 3100,
+      "td3_parameter_update_step": 149318,
+      "total_sim_days": 152419,
+      "actor_checkpoint": "evaluation_step_0031_episode_003100.pth"
+    },
+    {
+      "evaluation_step": 32,
+      "completed_environment_episode": 3200,
+      "td3_parameter_update_step": 157674,
+      "total_sim_days": 160875,
+      "actor_checkpoint": "evaluation_step_0032_episode_003200.pth"
+    },
+    {
+      "evaluation_step": 33,
+      "completed_environment_episode": 3300,
+      "td3_parameter_update_step": 165778,
+      "total_sim_days": 169079,
+      "actor_checkpoint": "evaluation_step_0033_episode_003300.pth"
+    },
+    {
+      "evaluation_step": 34,
+      "completed_environment_episode": 3400,
+      "td3_parameter_update_step": 173912,
+      "total_sim_days": 177313,
+      "actor_checkpoint": "evaluation_step_0034_episode_003400.pth"
+    },
+    {
+      "evaluation_step": 35,
+      "completed_environment_episode": 3500,
+      "td3_parameter_update_step": 182298,
+      "total_sim_days": 185799,
+      "actor_checkpoint": "evaluation_step_0035_episode_003500.pth"
+    },
+    {
+      "evaluation_step": 36,
+      "completed_environment_episode": 3600,
+      "td3_parameter_update_step": 190684,
+      "total_sim_days": 194285,
+      "actor_checkpoint": "evaluation_step_0036_episode_003600.pth"
+    },
+    {
+      "evaluation_step": 37,
+      "completed_environment_episode": 3700,
+      "td3_parameter_update_step": 198996,
+      "total_sim_days": 202697,
+      "actor_checkpoint": "evaluation_step_0037_episode_003700.pth"
+    },
+    {
+      "evaluation_step": 38,
+      "completed_environment_episode": 3800,
+      "td3_parameter_update_step": 207585,
+      "total_sim_days": 211386,
+      "actor_checkpoint": "evaluation_step_0038_episode_003800.pth"
+    },
+    {
+      "evaluation_step": 39,
+      "completed_environment_episode": 3900,
+      "td3_parameter_update_step": 215937,
+      "total_sim_days": 219838,
+      "actor_checkpoint": "evaluation_step_0039_episode_003900.pth"
+    },
+    {
+      "evaluation_step": 40,
+      "completed_environment_episode": 4000,
+      "td3_parameter_update_step": 224556,
+      "total_sim_days": 228557,
+      "actor_checkpoint": "evaluation_step_0040_episode_004000.pth"
+    },
+    {
+      "evaluation_step": 41,
+      "completed_environment_episode": 4100,
+      "td3_parameter_update_step": 232927,
+      "total_sim_days": 237028,
+      "actor_checkpoint": "evaluation_step_0041_episode_004100.pth"
+    },
+    {
+      "evaluation_step": 42,
+      "completed_environment_episode": 4200,
+      "td3_parameter_update_step": 241156,
+      "total_sim_days": 245357,
+      "actor_checkpoint": "evaluation_step_0042_episode_004200.pth"
+    },
+    {
+      "evaluation_step": 43,
+      "completed_environment_episode": 4300,
+      "td3_parameter_update_step": 249418,
+      "total_sim_days": 253719,
+      "actor_checkpoint": "evaluation_step_0043_episode_004300.pth"
+    },
+    {
+      "evaluation_step": 44,
+      "completed_environment_episode": 4400,
+      "td3_parameter_update_step": 257879,
+      "total_sim_days": 262280,
+      "actor_checkpoint": "evaluation_step_0044_episode_004400.pth"
+    },
+    {
+      "evaluation_step": 45,
+      "completed_environment_episode": 4500,
+      "td3_parameter_update_step": 266317,
+      "total_sim_days": 270818,
+      "actor_checkpoint": "evaluation_step_0045_episode_004500.pth"
+    },
+    {
+      "evaluation_step": 46,
+      "completed_environment_episode": 4600,
+      "td3_parameter_update_step": 274351,
+      "total_sim_days": 278952,
+      "actor_checkpoint": "evaluation_step_0046_episode_004600.pth"
+    },
+    {
+      "evaluation_step": 47,
+      "completed_environment_episode": 4700,
+      "td3_parameter_update_step": 282778,
+      "total_sim_days": 287479,
+      "actor_checkpoint": "evaluation_step_0047_episode_004700.pth"
+    },
+    {
+      "evaluation_step": 48,
+      "completed_environment_episode": 4800,
+      "td3_parameter_update_step": 291703,
+      "total_sim_days": 296504,
+      "actor_checkpoint": "evaluation_step_0048_episode_004800.pth"
+    },
+    {
+      "evaluation_step": 49,
+      "completed_environment_episode": 4900,
+      "td3_parameter_update_step": 299873,
+      "total_sim_days": 304774,
+      "actor_checkpoint": "evaluation_step_0049_episode_004900.pth"
+    },
+    {
+      "evaluation_step": 50,
+      "completed_environment_episode": 5000,
+      "td3_parameter_update_step": 308388,
+      "total_sim_days": 313389,
+      "actor_checkpoint": "evaluation_step_0050_episode_005000.pth"
+    },
+    {
+      "evaluation_step": 51,
+      "completed_environment_episode": 5100,
+      "td3_parameter_update_step": 316424,
+      "total_sim_days": 321525,
+      "actor_checkpoint": "evaluation_step_0051_episode_005100.pth"
+    },
+    {
+      "evaluation_step": 52,
+      "completed_environment_episode": 5200,
+      "td3_parameter_update_step": 324827,
+      "total_sim_days": 330028,
+      "actor_checkpoint": "evaluation_step_0052_episode_005200.pth"
+    },
+    {
+      "evaluation_step": 53,
+      "completed_environment_episode": 5300,
+      "td3_parameter_update_step": 333204,
+      "total_sim_days": 338505,
+      "actor_checkpoint": "evaluation_step_0053_episode_005300.pth"
+    },
+    {
+      "evaluation_step": 54,
+      "completed_environment_episode": 5400,
+      "td3_parameter_update_step": 341644,
+      "total_sim_days": 347045,
+      "actor_checkpoint": "evaluation_step_0054_episode_005400.pth"
+    },
+    {
+      "evaluation_step": 55,
+      "completed_environment_episode": 5500,
+      "td3_parameter_update_step": 349912,
+      "total_sim_days": 355413,
+      "actor_checkpoint": "evaluation_step_0055_episode_005500.pth"
+    },
+    {
+      "evaluation_step": 56,
+      "completed_environment_episode": 5600,
+      "td3_parameter_update_step": 358636,
+      "total_sim_days": 364237,
+      "actor_checkpoint": "evaluation_step_0056_episode_005600.pth"
+    },
+    {
+      "evaluation_step": 57,
+      "completed_environment_episode": 5700,
+      "td3_parameter_update_step": 366961,
+      "total_sim_days": 372662,
+      "actor_checkpoint": "evaluation_step_0057_episode_005700.pth"
+    },
+    {
+      "evaluation_step": 58,
+      "completed_environment_episode": 5800,
+      "td3_parameter_update_step": 375464,
+      "total_sim_days": 381265,
+      "actor_checkpoint": "evaluation_step_0058_episode_005800.pth"
+    },
+    {
+      "evaluation_step": 59,
+      "completed_environment_episode": 5900,
+      "td3_parameter_update_step": 384149,
+      "total_sim_days": 390050,
+      "actor_checkpoint": "evaluation_step_0059_episode_005900.pth"
+    },
+    {
+      "evaluation_step": 60,
+      "completed_environment_episode": 6000,
+      "td3_parameter_update_step": 392279,
+      "total_sim_days": 398280,
+      "actor_checkpoint": "evaluation_step_0060_episode_006000.pth"
+    }
+  ]
+}

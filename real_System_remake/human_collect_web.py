@@ -41,13 +41,13 @@ DYNAMIC_SKIP_MAX_DAYS = 15
 DYNAMIC_REL_CHANGE = 0.25
 DYNAMIC_PRICE_REL_CHANGE = 0.15
 DYNAMIC_ABS_CHANGE = {
-    "现金": 50.0,
-    "产品A库存": 10.0,
-    "总欠款": 50.0,
-    "今日还款": 20.0,
-    "原料A参考采购量": 2.0,
-    "原料B参考采购量": 2.0,
-    "产品A销售价格": 1.0,
+    "Cash": 50.0,
+    "Product A inventory": 10.0,
+    "Total debt": 50.0,
+    "Payment due today": 20.0,
+    "Raw Material A reference quantity": 2.0,
+    "Raw Material B reference quantity": 2.0,
+    "Product A sale price": 1.0,
 }
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
@@ -57,6 +57,13 @@ PARTICIPANT_INFO_OPTIONS = {
     "gender": ["男", "女"],
     "econ_background": ["几乎没有", "学过一点", "比较熟悉"],
     "strategy_experience": ["几乎没有", "偶尔接触", "经常接触"],
+}
+PARTICIPANT_INFO_LABELS = {
+    "age_group": "an age group",
+    "education": "an education level",
+    "gender": "a gender",
+    "econ_background": "an economics/management background level",
+    "strategy_experience": "a business/strategy game experience level",
 }
 
 
@@ -80,11 +87,11 @@ def session_paths(participant_id, session_id):
 def normalize_participant_info(payload):
     raw_info = payload.get("participant_info") or {}
     normalized = {}
-    for key, label in PARTICIPANT_INFO_FIELDS:
+    for key, _ in PARTICIPANT_INFO_FIELDS:
         value = str(raw_info.get(key, "")).strip()
         options = PARTICIPANT_INFO_OPTIONS.get(key, [])
         if value not in options:
-            raise ValueError(f"请选择{label}。")
+            raise ValueError(f"Please select {PARTICIPANT_INFO_LABELS.get(key, 'an option')}.")
         normalized[key] = value
     return normalized
 
@@ -104,10 +111,10 @@ def action_hints(state):
     l_base = raw_state_value(state, 12)
     price_base = raw_state_value(state, 6)
     return [
-        f"当前现金：{format_number(cash)}；申请贷款金额可填0到{format_number(cash)}",
-        f"原料A要和原料B配套；上一回合A参考量 {format_number(k_base)}、B参考量 {format_number(l_base)}。A明显多于B时，多出的A可能无法变成产品。",
-        f"原料B要和原料A配套；上一回合B参考量 {format_number(l_base)}、A参考量 {format_number(k_base)}。B明显多于A时，多出的B可能无法变成产品。",
-        "产品A定价应兼顾成本收益、乙公司承受能力和双方合作稳定性。",
+        f"Cash: {format_number(cash)}. Loan range: 0-{format_number(cash)}.",
+        f"Use A and B together. Previous reference: A {format_number(k_base)}, B {format_number(l_base)}. Excess A may be wasted.",
+        f"Use A and B together. Previous reference: B {format_number(l_base)}, A {format_number(k_base)}. Excess B may be wasted.",
+        "Balance cost and profit with Company B's affordability and stable cooperation.",
     ]
 
 
@@ -139,23 +146,23 @@ def action_limits(state):
 
 def quantity_to_action(value, base, name):
     if value < 0:
-        raise ValueError(f"{name}不能为负数。")
+        raise ValueError(f"{name} cannot be negative.")
     if base <= 0:
         action = value / 10 - 0.5
         if not -0.5 <= action <= 0.5:
-            raise ValueError(f"{name}当前为0，请填写0到10之间的数。")
+            raise ValueError(f"The current reference for {name} is 0. Enter a value between 0 and 10.")
         return action
     action = value / base - 1
     if not -0.5 <= action <= 0.5:
-        raise ValueError(f"{name}只能在 {format_number(base * 0.5)} 到 {format_number(base * 1.5)} 之间。")
+        raise ValueError(f"{name} must be between {format_number(base * 0.5)} and {format_number(base * 1.5)}.")
     return action
 
 
 def human_to_model_action(state, values):
     if len(values) != 4:
-        raise ValueError("请填写四个动作数值。")
+        raise ValueError("Please enter all four action values.")
     if any(value < 0 for value in values):
-        raise ValueError("请不要输入负数。")
+        raise ValueError("Please do not enter negative values.")
     cash = raw_state_value(state, 0)
     k_base = raw_state_value(state, 11)
     l_base = raw_state_value(state, 12)
@@ -164,32 +171,32 @@ def human_to_model_action(state, values):
 
     if cash <= 0:
         if loan > 0:
-            raise ValueError("当前现金为0，申请贷款金额只能填写0。")
+            raise ValueError("Current cash is 0, so the loan request must be 0.")
         loan_action = -0.5
     else:
         if loan > cash:
-            raise ValueError(f"申请贷款金额不能超过当前现金 {format_number(cash)}。")
+            raise ValueError(f"The loan request cannot exceed current cash ({format_number(cash)}).")
         loan_action = loan / cash - 0.5
 
-    k_action = quantity_to_action(k_need, k_base, "A采购需求")
-    l_action = quantity_to_action(l_need, l_base, "B采购需求")
+    k_action = quantity_to_action(k_need, k_base, "Raw Material A purchase demand")
+    l_action = quantity_to_action(l_need, l_base, "Raw Material B purchase demand")
     if price_base <= 0:
-        raise ValueError("当前价格基准异常，不能提交价格动作。")
+        raise ValueError("The current price reference is invalid, so the price action cannot be submitted.")
     price_action = price / price_base - 1
     if not -0.5 <= price_action <= 0.5:
-        raise ValueError(f"销售价格只能在 {format_number(price_base * 0.5)} 到 {format_number(price_base * 1.5)} 之间。")
+        raise ValueError(f"The sale price must be between {format_number(price_base * 0.5)} and {format_number(price_base * 1.5)}.")
     return [loan_action, k_action, l_action, price_action]
 
 
 def clamp_human_values_for_state(state, values):
     if len(values) != 4:
-        raise ValueError("请填写四个动作数值。")
+        raise ValueError("Please enter all four action values.")
     limits = action_limits(state)
     clamped = []
     for value, limit in zip(values, limits):
         value = float(value)
         if not math.isfinite(value):
-            raise ValueError("动作数值必须是有效数字。")
+            raise ValueError("Each action value must be a valid number.")
         min_value = float(limit.get("min", 0.0))
         max_value = limit.get("max")
         value = max(min_value, value)
@@ -266,7 +273,7 @@ def profit_line_charts(collector):
         return agent_raw_value(full_state, agent_key, 0)
 
     charts = []
-    for agent_key, title in (("production1", "甲公司每日净利润"), ("consumption1", "乙公司每日净利润")):
+    for agent_key, title in (("production1", "Company A Daily Net Profit"), ("consumption1", "Company B Daily Net Profit")):
         points = []
         previous_cash = None
         for snapshot in snapshots:
@@ -289,9 +296,9 @@ def purchase_breakdown_text(title, local_pair, third_pair):
     total_num = local_num + third_num
     total_spend = local_price * local_num + third_price * third_num
     return (
-        f"{title}: 普通市场买到 {format_number(local_num)}，单价 {format_number(local_price)}；"
-        f"第三方市场买到 {format_number(third_num)}，定价 {format_number(third_price)}；"
-        f"合计 {format_number(total_num)}，花费 {format_number(total_spend)}。"
+        f"{title}: regular market quantity {format_number(local_num)} at unit price {format_number(local_price)}; "
+        f"third-party market quantity {format_number(third_num)} at listed price {format_number(third_price)}; "
+        f"total quantity {format_number(total_num)}, total cost {format_number(total_spend)}."
     )
 
 
@@ -305,15 +312,15 @@ def business_warning_lines(state, prod, cons):
 
     if third_a_price > 0 and previous_price > third_a_price:
         warnings.append(
-            f"昨天市场中第三方市场的产品A更便宜（本公司定价 {format_number(previous_price)}，"
-            f"第三方市场定价 {format_number(third_a_price)}）。在系统按低价优先购买的规则下，"
-            "乙公司可能优先购买第三方市场，本公司产品A销量可能受影响。"
+            f"Yesterday, Product A was cheaper in the third-party market (our price: {format_number(previous_price)}; "
+            f"third-party price: {format_number(third_a_price)}). Because the system buys from the lower-priced source first, "
+            "Company B may prioritize the third-party market, which may reduce our Product A sales."
         )
     if third_a_num > 0 and sold <= 1e-9 and stock > 0:
         warnings.append(
-            f"昨天成交结果显示：乙公司从第三方市场买到 {format_number(third_a_num)} 个产品A，"
-            "本公司产品A销量为0。这个结果通常说明乙公司的购买需求被外部供给满足，"
-            "本公司产品A没有形成成交。"
+            f"Yesterday, Company B bought {format_number(third_a_num)} units of Product A from the third-party market, "
+            "while our Product A sales were 0. This usually means that external supply met Company B's demand and "
+            "our Product A did not sell."
         )
 
     a_total = prod["k_total"]
@@ -321,90 +328,90 @@ def business_warning_lines(state, prod, cons):
     if max(a_total, b_total) > 0:
         imbalance = abs(a_total - b_total)
         if imbalance >= 1 and imbalance / max(a_total, b_total) >= 0.1:
-            more_name, less_name = ("原料A", "原料B") if a_total > b_total else ("原料B", "原料A")
+            more_name, less_name = ("Raw Material A", "Raw Material B") if a_total > b_total else ("Raw Material B", "Raw Material A")
             warnings.append(
-                f"昨天本公司实际买到的原料A和原料B不匹配（{more_name}比{less_name}多 "
-                f"{format_number(imbalance)}）。产品A按较少的{less_name}投入生产，"
-                f"多出来的{more_name}当天不能保存，因此这部分采购不会转化为当天产出。"
+                f"Yesterday, the amounts of Raw Materials A and B that we actually purchased were unbalanced "
+                f"({more_name} exceeded {less_name} by {format_number(imbalance)}). Product A output is limited by the smaller "
+                f"amount of {less_name}. Excess {more_name} cannot be stored overnight, so it does not contribute to output."
             )
 
     shortages = []
     for name, need, got in (
-        ("原料A", raw_or_zero(state, 11), a_total),
-        ("原料B", raw_or_zero(state, 12), b_total),
+        ("Raw Material A", raw_or_zero(state, 11), a_total),
+        ("Raw Material B", raw_or_zero(state, 12), b_total),
     ):
         shortage = need - got
         if need > 0 and shortage >= 1 and got < need * 0.8:
-            shortages.append(f"{name}少买到 {format_number(shortage)}")
+            shortages.append(f"{name} was short by {format_number(shortage)}")
     if shortages:
         warnings.append(
-            "昨天实际买到的原料少于填写的采购需求（" + "，".join(shortages) +
-            "）。这可能受现金约束或市场分配影响，后续产品A产量会按实际买到数量计算。"
+            "Yesterday, actual raw-material purchases were below the requested quantities (" + "; ".join(shortages) +
+            "). Cash constraints or market allocation may have caused the shortfall. Product A output will be based on the quantities actually purchased."
         )
 
     debt_due = raw_or_zero(state, 9) + raw_or_zero(state, 10)
     cash = raw_or_zero(state, 0)
     if debt_due > cash:
         warnings.append(
-            f"今天待还款 {format_number(debt_due)}，高于当前现金 {format_number(cash)}。"
-            "如果当天贷款和经营现金流无法覆盖还款，本回合存在结束风险。"
+            f"Today's payment of {format_number(debt_due)} exceeds current cash of {format_number(cash)}. "
+            "If today's loan and operating cash flow do not cover the payment, the episode may end."
         )
     return warnings[:4]
 
 
 def production_flow_detail_html():
     return """
-      <div class="production-flow-detail" aria-label="产品制作与市场流转示意图">
+      <div class="production-flow-detail" aria-label="Product production and market flow diagram">
         <div class="flow-market-row">
           <div class="flow-node flow-market">
-            <strong>普通市场</strong>
-            <span>存放上一天进入市场的原料A和原料B</span>
-            <small>原料A来自甲公司的产品A；原料B来自乙公司的产品B</small>
+            <strong>Regular Market</strong>
+            <span>Holds Raw Materials A and B carried into the market from the previous day</span>
+            <small>Raw Material A comes from Company A's Product A; Raw Material B comes from Company B's Product B</small>
           </div>
           <div class="flow-node flow-third-market">
-            <strong>第三方市场</strong>
-            <span>提供补充原料A和补充原料B</span>
-            <small>普通市场不足或价格不合适时，企业可能从这里补充购买</small>
+            <strong>Third-Party Market</strong>
+            <span>Provides supplementary Raw Materials A and B</span>
+            <small>Companies may purchase additional materials here when regular-market supply is insufficient or its price is unfavorable</small>
           </div>
         </div>
 
         <div class="flow-lanes">
           <div class="flow-lane">
-            <div class="flow-lane-title">甲公司生产循环</div>
+            <div class="flow-lane-title">Company A Production Cycle</div>
             <div class="flow-node">
-              <strong>原料A + 原料B</strong>
-              <span>甲公司从普通市场和第三方市场中购买</span>
-              <small>原料当天购买、当天投入生产，不跨天保存。</small>
+              <strong>Raw Material A + Raw Material B</strong>
+              <span>Company A purchases from the regular and third-party markets</span>
+              <small>Raw materials are purchased and used on the same day and cannot be stored overnight.</small>
             </div>
-            <div class="flow-arrow"><span>投入甲公司</span></div>
+            <div class="flow-arrow"><span>Inputs to Company A</span></div>
             <div class="flow-node flow-company-a">
-              <strong>甲公司</strong>
-              <span>使用原料A和原料B进行生产</span>
-              <small>产品A产量 = 2.5 × min(买到的原料A, 买到的原料B)。</small>
+              <strong>Company A</strong>
+              <span>Produces using Raw Materials A and B</span>
+              <small>Product A output = 2.5 × min(Raw Material A purchased, Raw Material B purchased).</small>
             </div>
-            <div class="flow-arrow"><span>当天生产</span></div>
+            <div class="flow-arrow"><span>Produced today</span></div>
             <div class="flow-node flow-product-a">
-              <strong>产品A</strong>
-              <span>下一天进入普通市场，成为原料A</span>
+              <strong>Product A</strong>
+              <span>Enters the regular market the next day as Raw Material A</span>
             </div>
           </div>
 
           <div class="flow-lane">
-            <div class="flow-lane-title">乙公司生产循环</div>
+            <div class="flow-lane-title">Company B Production Cycle</div>
             <div class="flow-node">
-              <strong>原料A + 原料B</strong>
-              <span>乙公司也会从普通市场和第三方市场中购买</span>
-              <small>乙公司的行为由系统自动决策。</small>
+              <strong>Raw Material A + Raw Material B</strong>
+              <span>Company B also purchases from the regular and third-party markets</span>
+              <small>Company B's actions are determined automatically by the system.</small>
             </div>
-            <div class="flow-arrow"><span>投入乙公司</span></div>
+            <div class="flow-arrow"><span>Inputs to Company B</span></div>
             <div class="flow-node flow-company-b">
-              <strong>乙公司</strong>
-              <span>使用原料A和原料B进行生产</span>
+              <strong>Company B</strong>
+              <span>Produces using Raw Materials A and B</span>
             </div>
-            <div class="flow-arrow"><span>当天生产</span></div>
+            <div class="flow-arrow"><span>Produced today</span></div>
             <div class="flow-node flow-product-b">
-              <strong>产品B</strong>
-              <span>下一天进入普通市场，成为原料B</span>
+              <strong>Product B</strong>
+              <span>Enters the regular market the next day as Raw Material B</span>
             </div>
           </div>
         </div>
@@ -429,51 +436,51 @@ def dashboard_payload(collector, state, day, previous_state=None, full_state=Non
 
     if previous_state is None:
         summary_lines = [
-            "第一天刚开始，还没有上一天净利润记录。",
-            f"甲公司（本公司）现在有 {format_number(cash)} 现金。你今天先决定借多少钱、买多少原料A和B、产品A卖多少钱。"
+            "This is the first day, so there is no net-profit record from the previous day.",
+            f"Company A (your company) currently has {format_number(cash)} in cash. Decide how much to borrow, how much of Raw Materials A and B to purchase, and the sale price of Product A."
         ]
         summary_warnings = []
     else:
         summary_lines = [
-            f"昨天甲公司（本公司）净利润是 {signed_number(cash_delta)}，现在现金是 {format_number(cash)}。",
+            f"Yesterday, Company A (your company) had a net profit of {signed_number(cash_delta)}. Current cash is {format_number(cash)}.",
             (
-                f"乙公司昨天净利润是 {signed_number(consumption_cash_delta)}。它如果持续变差，后面购买产品A的能力也可能受影响。"
+                f"Company B's net profit yesterday was {signed_number(consumption_cash_delta)}. If its position continues to worsen, its ability to purchase Product A may be affected."
                 if consumption_cash_delta is not None
-                else "乙公司昨天净利润暂时看不到；等进入下一天后再观察它有没有变好或变差。"
+                else "Company B's net profit for yesterday is not available yet. Check again on the next day to see whether its position improves or worsens."
             ),
         ]
         summary_warnings = business_warning_lines(state, prod, cons)
 
     modules = [
         {
-            "title": "贷款信息",
-            "unit": "金额",
+            "title": "Loan Information",
+            "unit": "Amount",
             "items": [
-                {"label": "当前现金", "value": format_number(cash), "raw": cash},
-                {"label": "今天还款", "value": format_number(raw_or_zero(state, 9) + raw_or_zero(state, 10)), "raw": raw_or_zero(state, 9) + raw_or_zero(state, 10)},
-                {"label": "总欠款", "value": format_number(raw_or_zero(state, 2)), "raw": raw_or_zero(state, 2)},
-                {"label": "昨天贷款", "value": format_number(actual_loan), "raw": actual_loan},
+                {"label": "Current Cash", "value": format_number(cash), "raw": cash},
+                {"label": "Payment Due Today", "value": format_number(raw_or_zero(state, 9) + raw_or_zero(state, 10)), "raw": raw_or_zero(state, 9) + raw_or_zero(state, 10)},
+                {"label": "Total Debt", "value": format_number(raw_or_zero(state, 2)), "raw": raw_or_zero(state, 2)},
+                {"label": "Loan Received Yesterday", "value": format_number(actual_loan), "raw": actual_loan},
             ],
         },
         {
-            "title": "上一天两家公司买到的原料数量",
+            "title": "Raw Materials Purchased by Both Companies Yesterday",
             "items": [
-                {"label": "甲公司-A", "value": format_number(prod["k_total"]), "raw": prod["k_total"]},
-                {"label": "甲公司-B", "value": format_number(prod["l_total"]), "raw": prod["l_total"]},
-                {"label": "乙公司-A", "value": format_number(cons["k_total"]), "raw": cons["k_total"]},
-                {"label": "乙公司-B", "value": format_number(cons["l_total"]), "raw": cons["l_total"]},
+                {"label": "Company A - A", "value": format_number(prod["k_total"]), "raw": prod["k_total"]},
+                {"label": "Company A - B", "value": format_number(prod["l_total"]), "raw": prod["l_total"]},
+                {"label": "Company B - A", "value": format_number(cons["k_total"]), "raw": cons["k_total"]},
+                {"label": "Company B - B", "value": format_number(cons["l_total"]), "raw": cons["l_total"]},
             ],
         },
         {
-            "title": "定价与销售信息",
+            "title": "Pricing and Sales Information",
             "items": [
-                {"label": "A普通市场定价", "value": format_number(raw_or_zero(state, 29)), "raw": raw_or_zero(state, 29)},
-                {"label": "A第三方市场定价", "value": format_number(raw_or_zero(state, 30)), "raw": raw_or_zero(state, 30)},
-                {"label": "B普通市场定价", "value": format_number(raw_or_zero(state, 31)), "raw": raw_or_zero(state, 31)},
-                {"label": "B第三方市场定价", "value": format_number(raw_or_zero(state, 32)), "raw": raw_or_zero(state, 32)},
-                {"label": "产品A昨天售出", "value": format_number(raw_or_zero(state, 3)), "raw": raw_or_zero(state, 3)},
-                {"label": "产品A昨天产出", "value": format_number(raw_or_zero(state, 4)), "raw": raw_or_zero(state, 4)},
-                {"label": "产品A当前库存", "value": format_number(raw_or_zero(state, 1)), "raw": raw_or_zero(state, 1)},
+                {"label": "A Regular Market Price", "value": format_number(raw_or_zero(state, 29)), "raw": raw_or_zero(state, 29)},
+                {"label": "A Third-Party Market Price", "value": format_number(raw_or_zero(state, 30)), "raw": raw_or_zero(state, 30)},
+                {"label": "B Regular Market Price", "value": format_number(raw_or_zero(state, 31)), "raw": raw_or_zero(state, 31)},
+                {"label": "B Third-Party Market Price", "value": format_number(raw_or_zero(state, 32)), "raw": raw_or_zero(state, 32)},
+                {"label": "Product A Sold Yesterday", "value": format_number(raw_or_zero(state, 3)), "raw": raw_or_zero(state, 3)},
+                {"label": "Product A Produced Yesterday", "value": format_number(raw_or_zero(state, 4)), "raw": raw_or_zero(state, 4)},
+                {"label": "Current Product A Inventory", "value": format_number(raw_or_zero(state, 1)), "raw": raw_or_zero(state, 1)},
             ],
         },
     ]
@@ -482,42 +489,42 @@ def dashboard_payload(collector, state, day, previous_state=None, full_state=Non
 
     details = [
         {
-            "title": "产品制作与市场流转示意图",
+            "title": "Product Production and Market Flow",
             "html": production_flow_detail_html(),
         },
         {
-            "title": "市场购买规则",
+            "title": "Market Purchasing Rules",
             "lines": [
-                "普通市场和第三方市场可能同时提供同类商品；这里的第三方市场可以理解为政府宏观调控部门。",
-                "第三方市场固定定价为100，数量充足，用来避免市场完全买不到货。",
-                "系统会先购买更便宜的一档；如果普通市场买不够，再从下一档补充。",
-                "当市场同类商品数量不足时，会按需求比例分配。"
+                "The regular market and the third-party market may offer the same type of goods at the same time. The third-party market can be understood as a government macroeconomic regulator.",
+                "The third-party market has a fixed price of 100 and sufficient supply, preventing a complete shortage of goods.",
+                "The system purchases from the lower-priced source first. If the regular market cannot meet demand, it purchases the remainder from the next source.",
+                "When the available quantity of a good is insufficient, the system allocates it in proportion to demand."
             ],
         },
         {
-            "title": "仿真环境六个阶段（系统自动完成）",
+            "title": "Six Simulation Stages (Completed Automatically)",
             "lines": [
-                "P1 企业决策阶段：甲公司决定贷款意愿、原料A采购需求、原料B采购需求和产品A价格。",
-                "P2 银行决策阶段：银行根据甲公司、乙公司和市场状态决定可放贷额度。",
-                "P3 贷款发放阶段：银行实际向企业发放贷款；贷款本金默认5天后到期归还，贷款期间每天都会产生并支付利息。",
-                "P4 商品交易阶段：企业在市场中购买原料、出售产品。",
-                "P5 商品生产阶段：甲公司用买到的原料A和原料B生产下一天可销售的产品A。",
-                "P6 清算阶段：系统结算还款、利息、现金和破产状态，然后进入下一天。",
+                "P1 Enterprise decision stage: Company A determines its loan request, purchase demands for Raw Materials A and B, and Product A price.",
+                "P2 Bank decision stage: The bank determines available credit based on Company A, Company B, and market conditions.",
+                "P3 Loan disbursement stage: The bank disburses loans to the companies. Loan principal is due after five days by default, and interest accrues and is paid each day during the loan term.",
+                "P4 Goods trading stage: Companies purchase raw materials and sell products in the market.",
+                "P5 Goods production stage: Company A uses the purchased Raw Materials A and B to produce Product A for sale the next day.",
+                "P6 Settlement stage: The system settles repayments, interest, cash, and bankruptcy status, then advances to the next day.",
             ],
         },
         {
-            "title": "上一天成交明细",
+            "title": "Previous-Day Transaction Details",
             "lines": [
-                purchase_breakdown_text("甲公司购买原料A", prod["k_local_pair"], prod["k_third_pair"]),
-                purchase_breakdown_text("甲公司购买原料B", prod["l_local_pair"], prod["l_third_pair"]),
-                purchase_breakdown_text("乙公司购买原料A", cons["k_local_pair"], cons["k_third_pair"]),
-                purchase_breakdown_text("乙公司购买原料B", cons["l_local_pair"], cons["l_third_pair"]),
+                purchase_breakdown_text("Company A purchased Raw Material A", prod["k_local_pair"], prod["k_third_pair"]),
+                purchase_breakdown_text("Company A purchased Raw Material B", prod["l_local_pair"], prod["l_third_pair"]),
+                purchase_breakdown_text("Company B purchased Raw Material A", cons["k_local_pair"], cons["k_third_pair"]),
+                purchase_breakdown_text("Company B purchased Raw Material B", cons["l_local_pair"], cons["l_third_pair"]),
             ],
         },
     ]
 
     return {
-        "summary": {"title": f"第 {day} 天经营小结", "lines": summary_lines, "warnings": summary_warnings},
+        "summary": {"title": f"Day {day} Business Summary", "lines": summary_lines, "warnings": summary_warnings},
         "modules": modules,
         "lineCharts": profit_line_charts(collector),
         "charts": charts,
@@ -582,7 +589,7 @@ def change_text(key, value, previous_state):
         return "-"
     delta = value - previous[key]
     if abs(delta) < 1e-9:
-        return "无变化"
+        return "No change"
     sign = "+" if delta > 0 else ""
     return f"{sign}{format_number(delta)}"
 
@@ -664,13 +671,13 @@ def write_episode_summary(session, status, survival_days=None):
 
 def decision_metrics(state):
     return {
-        "现金": raw_state_value(state, 0),
-        "产品A库存": raw_state_value(state, 1),
-        "总欠款": raw_state_value(state, 2),
-        "今日还款": raw_state_value(state, 9) + raw_state_value(state, 10),
-        "原料A参考采购量": raw_state_value(state, 11),
-        "原料B参考采购量": raw_state_value(state, 12),
-        "产品A销售价格": raw_state_value(state, 6),
+        "Cash": raw_state_value(state, 0),
+        "Product A inventory": raw_state_value(state, 1),
+        "Total debt": raw_state_value(state, 2),
+        "Payment due today": raw_state_value(state, 9) + raw_state_value(state, 10),
+        "Raw Material A reference quantity": raw_state_value(state, 11),
+        "Raw Material B reference quantity": raw_state_value(state, 12),
+        "Product A sale price": raw_state_value(state, 6),
     }
 
 
@@ -685,14 +692,14 @@ def metric_change_reasons(anchor_state, current_state):
         if abs_diff <= 1e-9:
             continue
         abs_threshold = DYNAMIC_ABS_CHANGE.get(name, 1.0)
-        rel_threshold = DYNAMIC_PRICE_REL_CHANGE if "价格" in name else DYNAMIC_REL_CHANGE
+        rel_threshold = DYNAMIC_PRICE_REL_CHANGE if "price" in name.lower() else DYNAMIC_REL_CHANGE
         base = max(abs(old_value), 1.0)
         rel_change = abs_diff / base
         if abs_diff >= abs_threshold or rel_change >= rel_threshold:
-            direction = "增加" if diff > 0 else "减少"
+            direction = "increased" if diff > 0 else "decreased"
             reasons.append(
-                f"{name}{direction}{format_number(abs_diff)}"
-                f"（从{format_number(old_value)}到{format_number(new_value)}）"
+                f"{name} {direction} by {format_number(abs_diff)} "
+                f"(from {format_number(old_value)} to {format_number(new_value)})"
             )
     return reasons
 
@@ -706,26 +713,26 @@ def block_status(session):
     last_skip_reason = session.get("last_skip_reason")
     return {
         "day": day,
-        "block_title": "连续人工决策阶段",
+        "block_title": "Continuous Human Decision Stage",
         "block_start": session.get("block_start_day", day),
-        "block_reason": "先连续采集一小段真实人工决策，再让系统自动推进到经营状态明显变化的位置。",
+        "block_reason": "First collect a short continuous segment of human decisions, then let the system advance automatically until business conditions change significantly.",
         "manual_days_in_block": manual_days,
         "min_human_days": BLOCK_MIN_HUMAN_DAYS,
         "remaining_before_skip": remaining,
         "can_skip": can_skip,
         "next_block_start": None,
-        "next_block_title": "状态变化触发点",
-        "next_block_reason": last_skip_reason or "跳过后，系统会自动运行到现金、债务、库存、采购参考量或销售价格出现明显变化的一天，再交回给你决策。",
+        "next_block_title": "Significant State-Change Point",
+        "next_block_reason": last_skip_reason or "The system then advances to the next significant change in cash, debt, inventory, purchase references, or price and returns control to you.",
         "dynamic_skip_max_days": DYNAMIC_SKIP_MAX_DAYS,
     }
 
 
 HTML = r"""<!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>甲公司人类专家数据采集</title>
+  <title>Company A Human Expert Data Collection</title>
   <style>
     body { margin: 0; font-family: "Microsoft YaHei", Arial, sans-serif; background: #f6f7f9; color: #1f2933; }
     main { max-width: 1420px; margin: 0 auto; padding: 22px; }
@@ -800,8 +807,8 @@ HTML = r"""<!doctype html>
     .line-tooltip.show { display: block; }
     .module-grid { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 12px; margin-top: 14px; }
     .module-card { border: 1px solid #dde3ea; border-radius: 8px; padding: 14px; background: #ffffff; }
-    .vertical-bars { display: flex; gap: 6px; align-items: end; min-height: 190px; padding-top: 8px; overflow: hidden; }
-    .vertical-bar-item { display: grid; grid-template-rows: 24px 110px 46px; gap: 6px; text-align: center; flex: 1 1 0; min-width: 0; }
+    .vertical-bars { display: flex; gap: 6px; align-items: end; min-height: 250px; padding-top: 8px; overflow: hidden; }
+    .vertical-bar-item { display: grid; grid-template-rows: 24px 110px 104px; gap: 6px; text-align: center; flex: 1 1 0; min-width: 0; }
     .vertical-value { font-size: 12px; font-weight: 700; color: #1f2933; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .vertical-track { height: 110px; display: flex; align-items: end; justify-content: center; background: #f3f6fa; border-radius: 6px; overflow: hidden; }
     .vertical-fill { width: 58%; background: #4b7bec; border-radius: 6px 6px 0 0; min-height: 2px; }
@@ -860,71 +867,71 @@ HTML = r"""<!doctype html>
 <body>
   <main>
     <section id="intro" class="panel intro">
-      <h1>任务描述</h1>
-      <p>这个系统中有甲公司、乙公司、银行以及第三方市场。<br>你是甲公司的经理，目标是根据每天的经营状态做决策，让企业经营更稳定，存活更久。</p>
-      <div class="flow" aria-label="每天运行流程">
-        <div class="flow-step"><strong>1. 查看今天状态</strong>你会看到现金、欠款、库存、价格和上一天经营结果。</div>
-        <div class="flow-step"><strong>2. 做出经营决策</strong>填写申请贷款金额、原料A采购需求、原料B采购需求和产品A销售价格。</div>
-        <div class="flow-step"><strong>3. 系统自动运行并进入下一天</strong>提交后系统自动完成交易、生产和清算；现金不足以还债时，本回合结束。</div>
+      <h1>Task Description</h1>
+      <p>This system includes Company A, Company B, a bank, and a third-party market.<br>You are the manager of Company A. Use the daily business information to make decisions, keep the company stable, and help it survive longer.</p>
+      <div class="flow" aria-label="Daily process">
+        <div class="flow-step"><strong>1. Review Today's Status</strong>You will see cash, debt, inventory, prices, and the previous day's business results.</div>
+        <div class="flow-step"><strong>2. Make Business Decisions</strong>Enter the loan request, purchase demands for Raw Materials A and B, and the Product A sale price.</div>
+        <div class="flow-step"><strong>3. Let the System Run and Advance</strong>After submission, the system completes trading, production, and settlement automatically. The episode ends if cash is insufficient to repay debt.</div>
       </div>
       <div class="intake-grid">
-        <label>参与者编号（可选，请勿填写姓名）
+        <label>Participant ID (optional; do not enter your name)
           <input id="participant" value="anonymous" />
         </label>
-        <label>年龄段
+        <label>Age Group
           <select id="ageGroup">
-            <option value="">请选择</option>
-            <option value="20岁以下">20岁以下</option>
-            <option value="20-40岁">20-40岁</option>
-            <option value="40岁以上">40岁以上</option>
+            <option value="">Please select</option>
+            <option value="20岁以下">Under 20</option>
+            <option value="20-40岁">20-40</option>
+            <option value="40岁以上">Over 40</option>
           </select>
         </label>
-        <label>受教育程度
+        <label>Education Level
           <select id="education">
-            <option value="">请选择</option>
-            <option value="高中及以下">高中及以下</option>
-            <option value="大专/本科">大专/本科</option>
-            <option value="硕士及以上">硕士及以上</option>
+            <option value="">Please select</option>
+            <option value="高中及以下">High school or below</option>
+            <option value="大专/本科">Associate or bachelor's degree</option>
+            <option value="硕士及以上">Master's degree or above</option>
           </select>
         </label>
-        <label>性别
+        <label>Gender
           <select id="gender">
-            <option value="">请选择</option>
-            <option value="男">男</option>
-            <option value="女">女</option>
+            <option value="">Please select</option>
+            <option value="男">Male</option>
+            <option value="女">Female</option>
           </select>
         </label>
-        <label>经济/管理相关背景
+        <label>Economics/Management Background
           <select id="econBackground">
-            <option value="">请选择</option>
-            <option value="几乎没有">几乎没有</option>
-            <option value="学过一点">学过一点</option>
-            <option value="比较熟悉">比较熟悉</option>
+            <option value="">Please select</option>
+            <option value="几乎没有">Little or none</option>
+            <option value="学过一点">Some study</option>
+            <option value="比较熟悉">Fairly familiar</option>
           </select>
         </label>
-        <label>经营/策略类游戏经验
+        <label>Business/Strategy Game Experience
           <select id="strategyExperience">
-            <option value="">请选择</option>
-            <option value="几乎没有">几乎没有</option>
-            <option value="偶尔接触">偶尔接触</option>
-            <option value="经常接触">经常接触</option>
+            <option value="">Please select</option>
+            <option value="几乎没有">Little or none</option>
+            <option value="偶尔接触">Occasional</option>
+            <option value="经常接触">Frequent</option>
           </select>
         </label>
-        <label>访问口令（输入123）
+        <label>Access Password (enter 123)
           <input id="accessPassword" type="password" />
         </label>
       </div>
       <div class="consent-box" aria-labelledby="consentTitle">
-        <p id="consentTitle"><strong>参与说明与知情同意</strong></p>
-        <p class="collection-period"><strong>收集时间：5月21日0点至6月21日0点</strong></p>
-        <p>本实验用于研究仿真经济环境中的经营决策。系统将记录基本信息、每日决策、决策用时及仿真结果，用于学术研究、模型训练和统计分析。请使用匿名编号，不要填写姓名、联系方式等可直接识别身份的信息。参加完全自愿，你可以随时点击“结束采集”退出。</p>
+        <p id="consentTitle"><strong>Participant Information and Informed Consent</strong></p>
+        <p class="collection-period"><strong>Collection Period: May 21, 00:00 to June 21, 00:00</strong></p>
+        <p>This experiment studies business decisions in a simulated economic environment. The system will record basic information, daily decisions, decision time, and simulation outcomes for academic research, model training, and statistical analysis. Use an anonymous ID and do not enter your name, contact details, or other directly identifying information. Participation is entirely voluntary, and you may select “End Collection” at any time to withdraw.</p>
         <label class="consent-check">
           <input id="consent" type="checkbox" />
-          <span>我已阅读上述说明，自愿参加，并同意研究者按上述范围记录和使用数据。</span>
+          <span>I have read the information above, voluntarily agree to participate, and consent to the recording and use of my data within the stated scope.</span>
         </label>
       </div>
       <div class="start-area">
-        <button id="startBtn" disabled>开始采集</button>
+        <button id="startBtn" disabled>Start Collection</button>
       </div>
     </section>
 
@@ -933,7 +940,7 @@ HTML = r"""<!doctype html>
         <div class="info-column">
           <div class="panel">
             <div class="row">
-              <strong id="dayTitle">第 - 天</strong>
+              <strong id="dayTitle">Day -</strong>
               <span id="status" class="status"></span>
             </div>
           </div>
@@ -954,17 +961,17 @@ HTML = r"""<!doctype html>
 
         <aside class="panel decision-panel">
           <div class="decision-title">
-            <h2>今日决策</h2>
-            <p>先填写原料A和原料B，再检查贷款和产品A定价。</p>
+            <h2>Today's Decisions</h2>
+            <p>Enter A and B first, then review the loan and price.</p>
           </div>
           <div class="actions" id="actions"></div>
           <div class="decision-submit">
-            <button id="submitBtn">提交动作并进入下一天</button>
+            <button id="submitBtn">Submit Actions and Continue to the Next Day</button>
             <div class="decision-secondary">
-              <button id="prevBtn" class="secondary" disabled>查看上一天</button>
-              <button id="skipBtn" class="secondary" disabled>完成本段，跳到下一段</button>
-              <button id="nextEpisodeBtn" class="secondary" disabled>开始下一回合</button>
-              <button id="endBtn" class="danger">结束采集</button>
+              <button id="prevBtn" class="secondary" disabled>View Previous Day</button>
+              <button id="skipBtn" class="secondary" disabled>Finish This Segment and Skip Ahead</button>
+              <button id="nextEpisodeBtn" class="secondary" disabled>Start Next Episode</button>
+              <button id="endBtn" class="danger">End Collection</button>
             </div>
           </div>
           <div id="blockInfo" class="block-info"></div>
@@ -975,13 +982,13 @@ HTML = r"""<!doctype html>
   <div id="busy" class="busy"><div class="spinner"></div></div>
 
 <script>
-const actionNames = ["申请贷款金额", "原料A采购需求", "原料B采购需求", "产品A销售价格"];
+const actionNames = ["Loan Request Amount", "Raw Material A Purchase Demand", "Raw Material B Purchase Demand", "Product A Sale Price"];
 const participantFields = [
-  ["ageGroup", "age_group", "年龄段"],
-  ["education", "education", "受教育程度"],
-  ["gender", "gender", "性别"],
-  ["econBackground", "econ_background", "经济/管理相关背景"],
-  ["strategyExperience", "strategy_experience", "经营/策略类游戏经验"],
+  ["ageGroup", "age_group", "an age group"],
+  ["education", "education", "an education level"],
+  ["gender", "gender", "a gender"],
+  ["econBackground", "econ_background", "an economics/management background level"],
+  ["strategyExperience", "strategy_experience", "a business/strategy game experience level"],
 ];
 let sessionId = null;
 let current = null;
@@ -1049,7 +1056,7 @@ function lineTooltipEl() {
 
 function showLineTooltip(event, day, value) {
   const tooltip = lineTooltipEl();
-  tooltip.innerHTML = `天数：${escapeHtml(day)}<br>净利润：${escapeHtml(formatTooltipNumber(value))}`;
+  tooltip.innerHTML = `Day: ${escapeHtml(day)}<br>Net Profit: ${escapeHtml(formatTooltipNumber(value))}`;
   const offset = 12;
   tooltip.style.left = `${event.clientX + offset}px`;
   tooltip.style.top = `${event.clientY + offset}px`;
@@ -1066,7 +1073,7 @@ async function api(path, payload) {
   try {
     const res = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload || {})});
     const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || "请求失败");
+    if (!res.ok || data.error) throw new Error(data.error || "Request failed.");
     return data;
   } finally {
     busy(false);
@@ -1074,12 +1081,12 @@ async function api(path, payload) {
 }
 
 function renderState(data, readonly=false) {
-  $("dayTitle").textContent = `甲公司第 ${data.day} 天可见的信息${readonly ? "（只读查看）" : ""}`;
+  $("dayTitle").textContent = `Company A Information Available on Day ${data.day}${readonly ? " (Read-Only View)" : ""}`;
   renderDashboard(data.dashboard || {});
 }
 
 function renderDashboard(dashboard) {
-  const summary = dashboard.summary || {title: "经营简报", lines: []};
+  const summary = dashboard.summary || {title: "Business Summary", lines: []};
   const summaryLines = summary.lines || [];
   $("summaryNews").innerHTML = `
     <h3>${escapeHtml(summary.title)}</h3>
@@ -1157,8 +1164,8 @@ function renderLineChart(chart) {
             <text x="${x.toFixed(1)}" y="${height - 18}" class="axis-label" text-anchor="middle">${escapeHtml(day)}</text>
           `;
         }).join("")}
-        <text x="${left - 6}" y="12" class="axis-label" text-anchor="end">净利润</text>
-        <text x="${width - right + 6}" y="${height - bottom + 4}" class="axis-label">天</text>
+        <text x="${left - 6}" y="12" class="axis-label" text-anchor="end">Net Profit</text>
+        <text x="${width - right + 6}" y="${height - bottom + 4}" class="axis-label">Day</text>
         ${coords.length > 1 ? `<polyline class="line-path" points="${path}" />` : ""}
         ${coords.map(point => `
           <g onmousemove="showLineTooltip(event, ${point.day}, ${point.value})" onmouseleave="hideLineTooltip()">
@@ -1193,7 +1200,7 @@ function renderCombinedDetails(details) {
   if (!details.length) return "";
   return `
     <details>
-      <summary>更多规则和成交明细</summary>
+      <summary>More Rules and Transaction Details</summary>
       ${details.map(detail => `
         <section class="detail-section">
           <h4>${escapeHtml(detail.title)}</h4>
@@ -1233,21 +1240,20 @@ function renderBlockInfo(status) {
   if (!status) {
     $("blockInfo").innerHTML = "";
     $("skipBtn").disabled = true;
-    $("skipBtn").textContent = "完成本段，跳到下一段";
+    $("skipBtn").textContent = "Finish This Segment and Skip Ahead";
     return;
   }
   const skipText = status.can_skip
-    ? `本段已完成 ${status.manual_days_in_block} 天，可以让系统自动运行到状态明显变化的一天`
-    : `还需要完成 ${status.remaining_before_skip} 天人工决策后，才能使用自动跳转`;
+    ? "Available now"
+    : `${status.remaining_before_skip} more human decision days required`;
   $("blockInfo").innerHTML = `
-    <div><strong>当前进度：</strong>第 ${status.day} 天，${status.block_title}。本段已完成 ${status.manual_days_in_block}/${status.min_human_days} 天人工决策。</div>
-    <div class="muted"><strong>跳转提示：</strong>${skipText}。</div>
-    <div class="muted"><strong>什么时候重新决策：</strong>${status.next_block_reason}</div>
+    <div><strong>Current Progress:</strong> Day ${status.day}, ${status.block_title} (${status.manual_days_in_block}/${status.min_human_days} days complete).</div>
+    <div class="muted"><strong>Skip:</strong> ${skipText}. ${status.next_block_reason}</div>
   `;
   $("skipBtn").disabled = !status.can_skip;
   $("skipBtn").textContent = status.can_skip
-    ? "跳到状态变化明显的一天"
-    : `还差 ${status.remaining_before_skip} 天可跳过`;
+    ? "Skip to the Next Significant State Change"
+    : `${status.remaining_before_skip} More Days Before Skipping`;
 }
 
 function renderActions(defaults, hints, limits, disabled=false) {
@@ -1265,13 +1271,13 @@ function renderActions(defaults, hints, limits, disabled=false) {
       <input id="action${i}" type="number" step="0.01" min="${limit.min}" ${maxAttr} value="${defaults[i] || 0}" onblur="clampInput(${i})" ${disabled ? "disabled" : ""}/>
       <div class="hint">${hints[i] || ""}</div>
       <div class="adjust">
-        <button type="button" onclick="adjust(${i},0.9)" ${disabled ? "disabled" : ""}>减少10%</button>
-        <button type="button" onclick="adjust(${i},1.1)" ${disabled ? "disabled" : ""}>增加10%</button>
+        <button type="button" onclick="adjust(${i},0.9)" ${disabled ? "disabled" : ""}>Decrease 10%</button>
+        <button type="button" onclick="adjust(${i},1.1)" ${disabled ? "disabled" : ""}>Increase 10%</button>
         <button type="button" onclick="add(${i},-1)" ${disabled ? "disabled" : ""}>-1</button>
         <button type="button" onclick="add(${i},1)" ${disabled ? "disabled" : ""}>+1</button>
-        <button type="button" onclick="setPreset(${i}, ${Number(limit.min || 0)})" ${disabled ? "disabled" : ""}>最小值</button>
-        <button type="button" onclick="setPreset(${i}, ${Number(defaults[i] || 0)})" ${disabled ? "disabled" : ""}>默认值</button>
-        <button type="button" onclick="setPreset(${i}, ${Number(limit.max || 0)})" ${disabled ? "disabled" : ""}>最大值</button>
+        <button type="button" onclick="setPreset(${i}, ${Number(limit.min || 0)})" ${disabled ? "disabled" : ""}>Minimum</button>
+        <button type="button" onclick="setPreset(${i}, ${Number(defaults[i] || 0)})" ${disabled ? "disabled" : ""}>Default</button>
+        <button type="button" onclick="setPreset(${i}, ${Number(limit.max || 0)})" ${disabled ? "disabled" : ""}>Maximum</button>
       </div>`;
     box.appendChild(card);
   });
@@ -1283,10 +1289,10 @@ function values() {
     const value = Number(el.value);
     const min = Number(el.min || 0);
     const max = Number(el.max);
-    if (!Number.isFinite(value)) throw new Error(`请填写${actionNames[i]}。`);
+    if (!Number.isFinite(value)) throw new Error(`Please enter ${actionNames[i]}.`);
     if (value < min || (Number.isFinite(max) && value > max)) {
-      const maxText = Number.isFinite(max) ? max : "不限";
-      throw new Error(`${actionNames[i]}只能填写 ${min} 到 ${maxText} 之间的数。`);
+      const maxText = Number.isFinite(max) ? max : "no upper limit";
+      throw new Error(`${actionNames[i]} must be between ${min} and ${maxText}.`);
     }
     return value;
   });
@@ -1309,14 +1315,14 @@ function participantInfo() {
   const info = {};
   for (const [elementId, key, label] of participantFields) {
     const value = $(elementId).value;
-    if (!value) throw new Error(`请选择${label}。`);
+    if (!value) throw new Error(`Please select ${label}.`);
     info[key] = value;
   }
   return info;
 }
 
 async function start() {
-  if (!$("consent").checked) throw new Error("请先阅读参与说明并勾选知情同意。");
+  if (!$("consent").checked) throw new Error("Please read the participant information and confirm your informed consent first.");
   const data = await api("/api/start", {
     participant_id: $("participant").value,
     password: $("accessPassword").value,
@@ -1329,7 +1335,7 @@ async function start() {
   previousSnapshot = null;
   $("intro").classList.add("hidden");
   $("app").classList.remove("hidden");
-  $("status").textContent = "环境已初始化，请填写今天的决策。";
+  $("status").textContent = "The environment is ready. Please enter today's decisions.";
   renderState(current);
   renderActions(current.defaults, current.hints, current.limits);
   renderBlockInfo(data.block);
@@ -1345,9 +1351,9 @@ async function submitStep() {
     $("submitBtn").disabled = true;
     $("skipBtn").disabled = true;
     $("nextEpisodeBtn").disabled = false;
-    $("status").textContent = `本回合结束，存活 ${data.survival_days} 天；已保存 ${data.rows_saved} 条专家数据。`;
+    $("status").textContent = `This episode has ended after ${data.survival_days} survival days. ${data.rows_saved} expert records have been saved.`;
   } else {
-    $("status").textContent = `已进入第 ${current.day} 天；已保存 ${data.rows_saved} 条专家数据。`;
+    $("status").textContent = `Day ${current.day} has begun. ${data.rows_saved} expert records have been saved.`;
     renderState(current);
     renderActions(current.defaults, current.hints, current.limits);
     renderBlockInfo(data.block);
@@ -1361,15 +1367,15 @@ async function skipToNextBlock() {
   current = data.state;
   block = data.block;
   $("prevBtn").disabled = true;
-  $("prevBtn").textContent = "查看上一天";
+  $("prevBtn").textContent = "View Previous Day";
   if (data.done) {
     $("submitBtn").disabled = true;
     $("skipBtn").disabled = true;
     $("nextEpisodeBtn").disabled = false;
-    $("status").textContent = `自动推进过程中本回合结束，存活 ${data.survival_days} 天；已保存 ${data.rows_saved} 条专家数据。`;
+    $("status").textContent = `The episode ended during automatic advancement after ${data.survival_days} survival days. ${data.rows_saved} expert records have been saved.`;
   } else {
     $("submitBtn").disabled = false;
-    $("status").textContent = `系统已自动推进 ${data.auto_days} 天，现在到第 ${current.day} 天，开始采集：${data.block.block_title}。`;
+    $("status").textContent = `The system advanced automatically by ${data.auto_days} days. It is now Day ${current.day}; data collection resumes at: ${data.block.block_title}.`;
   }
   renderState(current);
   renderActions(current.defaults, current.hints, current.limits, data.done);
@@ -1382,20 +1388,20 @@ function togglePrevious() {
   if (!viewingPrevious) {
     draftValues = values();
     viewingPrevious = true;
-    $("prevBtn").textContent = "返回今天";
+    $("prevBtn").textContent = "Return to Today";
     $("submitBtn").disabled = true;
     $("skipBtn").disabled = true;
     renderState(previousSnapshot, true);
     renderActions(previousSnapshot.human_values, previousSnapshot.hints, previousSnapshot.limits, true);
-    $("status").textContent = "正在查看上一天记录：这里只能查看，不能修改。";
+    $("status").textContent = "You are viewing the previous day's record. This view is read-only.";
   } else {
     viewingPrevious = false;
-    $("prevBtn").textContent = "查看上一天";
+    $("prevBtn").textContent = "View Previous Day";
     $("submitBtn").disabled = false;
     renderBlockInfo(block);
     renderState(current);
     renderActions(draftValues || current.defaults, current.hints, current.limits);
-    $("status").textContent = "已返回今天，请继续填写今天的决策。";
+    $("status").textContent = "You have returned to today. Please continue entering today's decisions.";
   }
 }
 
@@ -1406,11 +1412,11 @@ async function nextEpisode() {
   previousSnapshot = null;
   viewingPrevious = false;
   $("prevBtn").disabled = true;
-  $("prevBtn").textContent = "查看上一天";
+  $("prevBtn").textContent = "View Previous Day";
   $("submitBtn").disabled = false;
   $("skipBtn").disabled = true;
   $("nextEpisodeBtn").disabled = true;
-  $("status").textContent = "新回合已开始，请填写今天的决策。";
+  $("status").textContent = "A new episode has started. Please enter today's decisions.";
   renderState(current);
   renderActions(current.defaults, current.hints, current.limits);
   renderBlockInfo(data.block);
@@ -1423,7 +1429,7 @@ async function endSession() {
   $("nextEpisodeBtn").disabled = true;
   $("prevBtn").disabled = true;
   $("endBtn").disabled = true;
-  $("status").textContent = "采集已结束，数据已保存在服务器。";
+  $("status").textContent = "Data collection has ended. The data have been saved on the server.";
 }
 
 $("startBtn").onclick = () => start().catch(e => alert(e.message));
@@ -1481,7 +1487,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/end":
                 self._send_json(api_end(payload))
             else:
-                self._send_json({"error": "未知接口"}, 404)
+                self._send_json({"error": "Unknown endpoint."}, 404)
         except Exception as exc:
             self._send_json({"error": str(exc)}, 400)
 
@@ -1493,22 +1499,22 @@ def get_session(session_id):
     with SESSIONS_LOCK:
         session = SESSIONS.get(session_id)
     if session is None:
-        raise ValueError("实验会话不存在或已结束，请重新开始。")
+        raise ValueError("The experiment session does not exist or has ended. Please start again.")
     return session
 
 
 def api_start(payload):
     if ACCESS_PASSWORD and payload.get("password", "") != ACCESS_PASSWORD:
-        raise ValueError("访问口令不正确。")
+        raise ValueError("The access password is incorrect.")
     if payload.get("consent") is not True:
-        raise ValueError("请先阅读参与说明并确认知情同意。")
+        raise ValueError("Please read the participant information and confirm your informed consent first.")
     participant_id = payload.get("participant_id", "anonymous")
     participant_info = normalize_participant_info(payload)
     participant_info["consent"] = "yes"
     participant_info["consent_timestamp"] = datetime.now(timezone.utc).isoformat()
     auto_policy = payload.get("auto_policy", SERVER_AUTO_POLICY)
     if auto_policy not in {"td3", "fixed"}:
-        raise ValueError("auto_policy 只能是 td3 或 fixed。")
+        raise ValueError("auto_policy must be either td3 or fixed.")
     session_id = uuid.uuid4().hex
     output_path, meta_output_path, summary_output_path = session_paths(participant_id, session_id)
     collector = HumanProductionCollector(
@@ -1603,7 +1609,7 @@ def api_skip_to_next_block(payload):
         collector = session["collector"]
         status = block_status(session)
         if not status["can_skip"]:
-            raise ValueError(f"本段还需要完成 {status['remaining_before_skip']} 天人工决策后才能跳过。")
+            raise ValueError(f"You must complete {status['remaining_before_skip']} more human decision days in this segment before skipping.")
 
         anchor_state = collector.current_state().copy()
         requested_values = [float(value) for value in payload.get("values", [])]
@@ -1632,9 +1638,9 @@ def api_skip_to_next_block(payload):
             session["human_days_in_block"] = 0
             session["decision_started_at"] = time.perf_counter()
             if trigger_reasons:
-                session["last_skip_reason"] = "、".join(trigger_reasons[:3]) + "，因此需要重新人工判断。"
+                session["last_skip_reason"] = "; ".join(trigger_reasons[:3]) + ". A new human decision is therefore required."
             else:
-                session["last_skip_reason"] = f"系统已自动运行 {auto_days} 天；即使没有单项剧烈变化，也需要定期重新确认经营决策。"
+                session["last_skip_reason"] = f"The system advanced automatically by {auto_days} days. Even without a sharp change in any single measure, business decisions must be reviewed periodically."
 
         previous_state = last_auto["state"] if last_auto is not None else None
         previous_full_state = last_auto.get("full_state") if last_auto is not None else None
@@ -1690,11 +1696,11 @@ def api_end(payload):
 
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"网页实验系统已启动：http://127.0.0.1:{PORT}")
-    print(f"局域网访问请使用本机IP，例如：http://<你的电脑IP>:{PORT}")
-    print(f"非人工主体策略：{SERVER_AUTO_POLICY}")
-    print("访问口令：" + ("已启用" if ACCESS_PASSWORD else "未启用"))
-    print(f"数据保存目录：{WEB_DATA_DIR}")
+    print(f"Web experiment system started: http://127.0.0.1:{PORT}")
+    print(f"For LAN access, use this computer's IP address, for example: http://<computer-IP>:{PORT}")
+    print(f"Non-human agent policy: {SERVER_AUTO_POLICY}")
+    print("Access password: " + ("enabled" if ACCESS_PASSWORD else "disabled"))
+    print(f"Data directory: {WEB_DATA_DIR}")
     server.serve_forever()
 
 
