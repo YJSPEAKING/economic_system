@@ -201,7 +201,7 @@ def add_representation_module(ax, x, input_label, module_symbol):
         ax,
         x,
         module_y + 0.20,
-        "Historical Sequence\nRepresentation Module",
+        "Transformer-Based Historical\nSequence Representation Module",
         size=9.3,
         bold=True,
     )

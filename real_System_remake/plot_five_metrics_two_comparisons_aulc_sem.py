@@ -95,7 +95,15 @@ EXPERT_SAMPLE_ROWS = 168_548
 EXPERT_SUCCESSFUL_EPISODES = 1_720
 EXPERT_MEAN_SURVIVAL_DAYS = EXPERT_SAMPLE_ROWS / EXPERT_SUCCESSFUL_EPISODES
 MAX_EPISODE_DAYS = 100.0
-EXPECTED_RUNS_PER_GROUP = 8
+EXPECTED_SOURCE_RUNS_PER_GROUP = 8
+EXCLUDED_SEEDS_BY_GROUP = {
+    "Transformer+GAIL+TD3": {"652"},
+}
+EXPECTED_SELECTED_RUNS = {
+    "TD3": 8,
+    "GAIL+TD3": 8,
+    "Transformer+GAIL+TD3": 7,
+}
 CHINESE_TITLE_FONT = FontProperties(family="Microsoft YaHei", size=10.5)
 
 
@@ -122,12 +130,25 @@ def discover_runs(group_name: str) -> List[Path]:
         for path in group_dir.iterdir()
         if path.is_dir() and path.name.startswith("run-")
     )
-    if len(runs) != EXPECTED_RUNS_PER_GROUP:
+    if len(runs) != EXPECTED_SOURCE_RUNS_PER_GROUP:
         raise RuntimeError(
-            f"{group_name} should contain {EXPECTED_RUNS_PER_GROUP} runs, "
+            f"{group_name} should contain {EXPECTED_SOURCE_RUNS_PER_GROUP} runs, "
             f"but {len(runs)} were found in {group_dir}."
         )
-    return runs
+    excluded_seeds = EXCLUDED_SEEDS_BY_GROUP.get(group_name, set())
+    selected_runs = [
+        run_dir
+        for run_dir in runs
+        if seed_from_config(run_dir) not in excluded_seeds
+    ]
+    expected_count = EXPECTED_SELECTED_RUNS[group_name]
+    if len(selected_runs) != expected_count:
+        raise RuntimeError(
+            f"{group_name} should contain {expected_count} selected runs after "
+            f"excluding seeds {sorted(excluded_seeds)}, but {len(selected_runs)} "
+            "were selected."
+        )
+    return selected_runs
 
 
 def cache_paths(run_dir: Path, group_name: str) -> tuple[Path, Path]:

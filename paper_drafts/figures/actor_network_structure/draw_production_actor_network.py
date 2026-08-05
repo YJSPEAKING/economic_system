@@ -58,15 +58,15 @@ def draw_nodes(ax, x, y_values, *, facecolor, edgecolor):
     )
 
 
-def connect_layers(ax, x1, ys1, x2, ys2, *, color="#7890A8"):
+def connect_layers(ax, x1, ys1, x2, ys2, *, color="#50677D"):
     for y1 in ys1:
         for y2 in ys2:
             ax.plot(
                 [x1 + 0.16, x2 - 0.16],
                 [y1, y2],
                 color=color,
-                linewidth=0.55,
-                alpha=0.23,
+                linewidth=0.72,
+                alpha=0.48,
                 zorder=2,
             )
 
@@ -90,8 +90,8 @@ def add_activation(ax, x, label):
             (x, 4.72),
             arrowstyle="-|>",
             mutation_scale=9,
-            linewidth=0.8,
-            color="#4B5563",
+            linewidth=1.0,
+            color="#374151",
             zorder=5,
         )
     )
@@ -105,10 +105,10 @@ def main():
     plt.rcParams["mathtext.default"] = "bf"
     plt.rcParams["axes.unicode_minus"] = False
 
-    fig, ax = plt.subplots(figsize=(16.5, 7.0), dpi=300)
+    fig, ax = plt.subplots(figsize=(14.2, 7.0), dpi=300)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
-    ax.set_xlim(0.0, 17.0)
+    ax.set_xlim(0.0, 14.6)
     ax.set_ylim(0.0, 6.3)
     ax.axis("off")
 
@@ -137,8 +137,8 @@ def main():
             width,
             layer_box_h,
             facecolor=color,
-            edgecolor="#4B5563",
-            linewidth=0.9,
+            edgecolor="#374151",
+            linewidth=1.1,
             radius=0.06,
         )
 
@@ -220,23 +220,23 @@ def main():
 
     action_labels = [
         (4.25, "WNDF", "Loan Willingness"),
-        (3.25, "K", "Production-Material Purchase Willingness"),
-        (2.25, "L", "Consumer-Goods Purchase Willingness"),
+        (3.25, "K", "Production-Material\nPurchase Willingness"),
+        (2.25, "L", "Consumer-Goods\nPurchase Willingness"),
         (1.25, "P", "Next-Day Pricing"),
     ]
     for y, symbol, description in action_labels:
         arrow = FancyArrowPatch(
             (output_x + 0.18, y),
-            (12.95, y),
+            (12.88, y),
             arrowstyle="-|>",
             mutation_scale=10,
-            linewidth=0.9,
-            color="#4B5563",
+            linewidth=1.0,
+            color="#374151",
             zorder=3,
         )
         ax.add_patch(arrow)
         ax.text(
-            13.35,
+            13.28,
             y,
             symbol,
             fontsize=10.5,
@@ -247,7 +247,7 @@ def main():
             color="#111111",
             zorder=5,
         )
-        add_text(ax, 13.90, y, description, size=10.5, ha="left")
+        add_text(ax, 13.28, y - 0.27, description, size=9.6, ha="center")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(PNG_PATH, dpi=300, bbox_inches="tight", pad_inches=0.08, facecolor="white")
