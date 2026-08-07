@@ -39,7 +39,7 @@ SOURCE = (
     / "基于模仿学习的复杂经济系统主体决策模型小论文大纲稿_v1.docx"
 )
 OUTPUT_DIR = Path(__file__).resolve().parent
-OUTPUT = OUTPUT_DIR / "基于模仿学习的复杂经济系统主体决策模型小论文大纲稿_修改版v35.docx"
+OUTPUT = OUTPUT_DIR / "基于模仿学习的复杂经济系统主体决策模型小论文大纲稿_修改版v37.docx"
 EXPECTED_SOURCE_SHA256 = (
     "753659DBA9394BA37EC057DF1C61A53450F779258635D8E2E30C234253B92421"
 )
@@ -84,12 +84,19 @@ ACTOR_STRUCTURE_FIGURE = (
     / "actor_network_structure"
     / "production_actor_network_structure.png"
 )
-CRITIC_DISCRIMINATOR_STRUCTURE_FIGURE = (
+CRITIC_STRUCTURE_FIGURE = (
     ROOT
     / "paper_drafts"
     / "figures"
-    / "critic_discriminator_network_structure"
-    / "critic_discriminator_network_structure.png"
+    / "critic_network_structure"
+    / "production_critic_network_structure.png"
+)
+DISCRIMINATOR_STRUCTURE_FIGURE = (
+    ROOT
+    / "paper_drafts"
+    / "figures"
+    / "discriminator_network_structure"
+    / "production_discriminator_network_structure.png"
 )
 GAIL_TD3_TRAINING_FIGURE = (
     ROOT
@@ -253,6 +260,51 @@ ACTOR_NETWORK_MATHML = r"""
 </math>
 """
 
+IMITATION_REWARD_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <msubsup><mi>r</mi><mi>i</mi><mtext>int</mtext></msubsup><mo>=</mo>
+  <mi mathvariant="normal">min</mi><mfenced>
+    <mrow><mo>−</mo><mi mathvariant="normal">log</mi><mfenced>
+      <mi mathvariant="normal">max</mi><mfenced>
+        <mrow><mn>1</mn><mo>−</mo><msub><mi>D</mi><mi>φ</mi></msub>
+        <mfenced><msub><mi>s</mi><mi>i</mi></msub><mo>,</mo><msub><mi>a</mi><mi>i</mi></msub></mfenced></mrow>
+        <mo>,</mo><mi>ε</mi>
+      </mfenced>
+    </mfenced></mrow>
+    <mo>,</mo><msubsup><mi>r</mi><mtext>clip</mtext><mtext>int</mtext></msubsup>
+  </mfenced>
+</math>
+"""
+
+ACTOR_TOTAL_LOSS_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <msub><mi>ℒ</mi><mtext>adv</mtext></msub><mfenced><mi>ψ</mi></mfenced><mo>=</mo>
+  <mo>−</mo><mfrac><mn>1</mn><mrow><mn>2</mn><mi>B</mi></mrow></mfrac>
+  <munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>B</mi></munderover>
+  <mfenced open="[" close="]">
+    <mi mathvariant="normal">log</mi><msub><mi>D</mi><mi>φ</mi></msub>
+    <mfenced><msub><mi>s</mi><mi>i</mi></msub><mo>,</mo>
+      <msub><mi>μ</mi><mi>ψ</mi></msub><mfenced><msub><mi>s</mi><mi>i</mi></msub></mfenced>
+    </mfenced>
+    <mo>+</mo>
+    <mi mathvariant="normal">log</mi><msub><mi>D</mi><mi>φ</mi></msub>
+    <mfenced><msubsup><mi>s</mi><mi>i</mi><mi>E</mi></msubsup><mo>,</mo>
+      <msub><mi>μ</mi><mi>ψ</mi></msub><mfenced><msubsup><mi>s</mi><mi>i</mi><mi>E</mi></msubsup></mfenced>
+    </mfenced>
+  </mfenced>
+  <mo>,</mo><mspace width="1em"/>
+  <msub><mi>ℒ</mi><mtext>Actor</mtext></msub><mfenced><mi>ψ</mi></mfenced><mo>=</mo>
+  <mo>−</mo><mfrac><mn>1</mn><mi>B</mi></mfrac>
+  <munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>B</mi></munderover>
+  <msub><mi>Q</mi><msub><mi>θ</mi><mn>1</mn></msub></msub>
+  <mfenced><msub><mi>s</mi><mi>i</mi></msub><mo>,</mo>
+    <msub><mi>μ</mi><mi>ψ</mi></msub><mfenced><msub><mi>s</mi><mi>i</mi></msub></mfenced>
+  </mfenced>
+  <mo>+</mo><msub><mi>λ</mi><mtext>adv</mtext></msub>
+  <msub><mi>ℒ</mi><mtext>adv</mtext></msub><mfenced><mi>ψ</mi></mfenced>
+</math>
+"""
+
 EQUATIONS = (
     ACTOR_NETWORK_MATHML,
     NOISY_ACTION_MATHML,
@@ -294,6 +346,47 @@ def replace_paragraph_text(paragraph: Paragraph, text: str) -> None:
     run = paragraph.add_run(text)
     if source_rpr is not None:
         run._r.insert(0, source_rpr)
+
+
+def replace_text_across_nodes(paragraph: Paragraph, old: str, new: str) -> bool:
+    text_nodes = paragraph._p.xpath(".//w:t")
+    values = [node.text or "" for node in text_nodes]
+    combined = "".join(values)
+    start = combined.find(old)
+    if start < 0:
+        return False
+    end = start + len(old)
+
+    offsets = []
+    cursor = 0
+    for value in values:
+        offsets.append((cursor, cursor + len(value)))
+        cursor += len(value)
+
+    first_index = next(
+        index for index, (node_start, node_end) in enumerate(offsets)
+        if node_start <= start < node_end
+    )
+    last_index = next(
+        index for index, (node_start, node_end) in enumerate(offsets)
+        if node_start < end <= node_end
+    )
+    first_start, _ = offsets[first_index]
+    last_start, _ = offsets[last_index]
+    prefix = values[first_index][: start - first_start]
+    suffix = values[last_index][end - last_start :]
+
+    text_nodes[first_index].text = prefix + new + suffix
+    for index in range(first_index + 1, last_index + 1):
+        text_nodes[index].text = ""
+    return True
+
+
+def replace_equation_paragraph(paragraph: Paragraph, mathml: str) -> None:
+    for child in list(paragraph._p):
+        if child.tag != qn("w:pPr"):
+            paragraph._p.remove(child)
+    paragraph._p.append(mathml_to_omml(mathml))
 
 
 def remove_paragraph(paragraph: Paragraph) -> None:
@@ -1072,6 +1165,7 @@ def restructure_chapter_three(document: Document) -> None:
     discriminator_heading = find_paragraph(
         document, "3.3 判别器目标与模仿奖励构造"
     )
+    critic_heading = find_paragraph(document, "3.4 融合奖励与TD3参数更新")
 
     first_sample_content_element = sample_heading._p.getnext()
     if first_sample_content_element is None:
@@ -1138,32 +1232,6 @@ def restructure_chapter_three(document: Document) -> None:
     )
     anchor = insert_paragraph_after(
         anchor,
-        "除Actor外，生产企业主体的训练还涉及Critic与判别器。Critic对生产企业状态—动作对的长期价值进行估计，并为Actor参数更新提供价值梯度；判别器对专家状态—动作样本与生产企业生成样本进行分类，并据此构造模仿奖励。两类网络的结构如图3-2所示。",
-        format_source=first_sample_content,
-    )
-    critic_discriminator_picture = insert_picture_after(
-        anchor,
-        CRITIC_DISCRIMINATOR_STRUCTURE_FIGURE,
-        body_template=first_sample_content,
-        width_inches=6.0,
-    )
-    anchor = insert_paragraph_after(
-        critic_discriminator_picture,
-        "图3-2  生产企业Critic与判别器神经网络结构",
-        format_source=training_caption,
-    )
-    anchor = insert_paragraph_after(
-        anchor,
-        "生产企业Critic接收经标准化处理的33维状态向量与4维动作向量，并将二者拼接为37维状态—动作输入。Critic由两个参数相互独立的Q值估计分支组成。每个分支依次采用37-128-32-1的全连接结构，两个隐藏层均使用带泄漏线性整流函数，输出层分别得到Q_1与Q_2的标量估计。两个分支共享输入形式，但不共享网络参数。",
-        format_source=first_sample_content,
-    )
-    anchor = insert_paragraph_after(
-        anchor,
-        "判别器同样接收经标准化处理的37维状态—动作输入，并依次经过37-100、100-100和100-1三层全连接映射。前两个隐藏层使用双曲正切函数，最后一层输出单个logits值；Sigmoid函数将该值转换为区间[0,1]内的专家样本判别概率。判别器的100维隐藏层构成状态—动作样本的中间特征表示，具体训练目标与模仿奖励构造见第3.3节。",
-        format_source=first_sample_content,
-    )
-    anchor = insert_paragraph_after(
-        anchor,
         "为保持专家行为与在线生成行为的数据接口一致，每条专家记录由33维状态向量和4维动作向量组成，其中前33个字段对应专家状态，后4个字段对应专家动作。在线交互过程中，生产企业Actor根据当前状态生成动作，仿真环境执行该动作后返回环境奖励、下一状态和终止标记，并由此形成经验样本。令一次网络参数更新阶段从经验池采样得到的批量为：",
         format_source=first_sample_content,
     )
@@ -1171,14 +1239,14 @@ def restructure_chapter_three(document: Document) -> None:
         anchor._p.addnext(copied_element)
         anchor = Paragraph(copied_element, anchor._parent)
 
-    replace_paragraph_text(training_heading, "3.2 模型训练方案")
+    replace_paragraph_text(training_heading, "3.2 GAIL+TD3联合训练总体方案")
 
     training_intro = find_paragraph(
         document, "本文将生成对抗模仿学习引入生产企业主体的 TD3 训练过程"
     )
     replace_paragraph_text(
         training_intro,
-        "模型训练通过连续执行多次仿真推进。每次仿真均从环境初始化开始，经过若干天连续运行，直至触发第2.1节所述终止条件而结束。本文将这一完整过程定义为一个回合（episode）。由多个回合构成的整体训练流程如图3-3所示。",
+        "模型训练通过连续执行多次仿真推进。每次仿真均从环境初始化开始，经过若干天连续运行，直至触发第2.1节所述终止条件而结束。本文将这一完整过程定义为一个回合（episode）。由多个回合构成的整体训练流程如图3-2所示。",
     )
     episode_picture = insert_picture_after(
         training_intro,
@@ -1188,7 +1256,7 @@ def restructure_chapter_three(document: Document) -> None:
     )
     episode_caption = insert_paragraph_after(
         episode_picture,
-        "图3-3  模型训练中的多回合仿真流程",
+        "图3-2  模型训练中的多回合仿真流程",
         format_source=training_caption,
     )
     cross_episode_description = insert_paragraph_after(
@@ -1198,7 +1266,7 @@ def restructure_chapter_three(document: Document) -> None:
     )
     insert_paragraph_after(
         cross_episode_description,
-        "在上述多回合交互框架下，本文基于第3.1节定义的Actor、专家样本和在线经验样本，将生成对抗模仿学习引入生产企业主体的TD3训练过程。生产企业Actor同时承担TD3策略网络和GAIL生成器的作用；经验池中的生产企业交互样本为判别器训练、模仿奖励构造和Critic价值估计提供统一的数据接口。",
+        "在上述多回合交互框架下，本文基于第3.1节定义的Actor、专家样本和在线经验样本，将生成对抗模仿学习引入生产企业主体的TD3训练过程。生产企业Actor同时承担TD3策略网络和GAIL生成器的作用；生产企业在线交互样本为判别器训练与模仿奖励构造提供生成数据，经验池批量为模仿奖励计算与Critic价值估计提供相互对齐的数据接口。",
         format_source=first_sample_content,
     )
 
@@ -1208,21 +1276,223 @@ def restructure_chapter_three(document: Document) -> None:
         element.getparent().remove(element)
         element = next_element
 
+    generated_batch_paragraphs = [
+        paragraph
+        for paragraph in document.paragraphs
+        if "判别器不使用完整经验样本，而只使用同一批量中的状态-动作部分作为生成样本" in paragraph.text
+    ]
+    if len(generated_batch_paragraphs) != 1:
+        raise RuntimeError("Unable to locate the generated-batch description.")
+    generated_batch_replaced = replace_text_across_nodes(
+        generated_batch_paragraphs[0],
+        "判别器不使用完整经验样本，而只使用同一批量中的状态-动作部分作为生成样本",
+        "模仿奖励计算使用该经验批量中的状态-动作部分",
+    )
+    if not generated_batch_replaced:
+        raise RuntimeError("Unable to update the generated-batch description.")
+
+    discriminator_intro = insert_paragraph_after(
+        discriminator_heading,
+        "判别器用于评价标准化后的专家状态—动作样本与生产企业生成状态—动作样本，并根据两类样本的分类结果构造模仿奖励。判别器网络与损失计算结构如图3-4所示。",
+        format_source=first_sample_content,
+    )
+    discriminator_picture = insert_picture_after(
+        discriminator_intro,
+        DISCRIMINATOR_STRUCTURE_FIGURE,
+        body_template=first_sample_content,
+        width_inches=6.0,
+    )
+    discriminator_intro.paragraph_format.keep_with_next = True
+    discriminator_picture.paragraph_format.keep_with_next = True
+    discriminator_picture.paragraph_format.first_line_indent = Inches(0)
+    discriminator_picture.paragraph_format.left_indent = Inches(0)
+    discriminator_picture.paragraph_format.right_indent = Inches(0)
+    discriminator_caption = insert_paragraph_after(
+        discriminator_picture,
+        "图3-4  生产企业GAIL判别器网络与损失计算结构",
+        format_source=training_caption,
+    )
+    discriminator_description = insert_paragraph_after(
+        discriminator_caption,
+        "图3-4中的专家样本与生成样本均由33维状态向量和4维动作向量组成。图中上标E和G分别表示专家样本与生成样本，y_i表示第i个样本的类别标签。两类样本依据专家数据训练集的统计量分别完成状态与动作标准化，并各自将标准化状态与标准化动作拼接为37维向量。该向量依次经过37-100、100-100和100-1三层全连接映射；前两个隐藏层均采用双曲正切函数，最后一层输出单个logits值。专家样本与生成样本分别完成状态—动作拼接后，依次输入共享全部网络参数的同一判别器，得到专家样本得分和生成样本得分；两类得分与相应类别标签共同用于计算包含熵正则项的判别器损失，并据此更新判别器参数。",
+        format_source=first_sample_content,
+    )
+    discriminator_probability_intro = find_paragraph(
+        document, "判别器  的输入为"
+    )
+    replace_paragraph_text(
+        discriminator_probability_intro,
+        "为简化记号，本节后续公式以状态s和动作a表示已经完成标准化处理的判别器输入。记判别器在参数φ下对状态—动作向量输出的logits为f_φ(s,a)，其专家样本判别概率通过Sigmoid函数定义为：",
+    )
+    probability_equation = Paragraph(
+        discriminator_probability_intro._p.getnext(),
+        discriminator_probability_intro._parent,
+    )
+    probability_description = Paragraph(
+        probability_equation._p.getnext(),
+        probability_equation._parent,
+    )
+    for text_element in probability_description._p.xpath(".//w:t"):
+        if text_element.text and "判别器损失定义为" in text_element.text:
+            text_element.text = text_element.text.replace(
+                "判别器损失定义为",
+                "判别器的二元分类损失定义为",
+            )
+    discriminator_loss_equation = Paragraph(
+        probability_description._p.getnext(),
+        probability_description._parent,
+    )
+    discriminator_loss_explanation = Paragraph(
+        discriminator_loss_equation._p.getnext(),
+        discriminator_loss_equation._parent,
+    )
+    replace_paragraph_text(
+        discriminator_loss_explanation,
+        "该式中，判别器损失的第一项提高专家状态—动作对被判定为专家样本的概率，第二项降低生成状态—动作对被判定为专家样本的概率。判别器训练目标在上述二元交叉熵项基础上加入判别概率熵正则项，以减缓判别输出过早饱和。生产企业生成样本的模仿奖励采用非饱和形式，并对奖励上界进行裁剪，其定义为：",
+    )
+    imitation_reward_equation = Paragraph(
+        discriminator_loss_explanation._p.getnext(),
+        discriminator_loss_explanation._parent,
+    )
+    replace_equation_paragraph(
+        imitation_reward_equation,
+        IMITATION_REWARD_MATHML,
+    )
+    imitation_reward_description = Paragraph(
+        imitation_reward_equation._p.getnext(),
+        imitation_reward_equation._parent,
+    )
+    replace_paragraph_text(
+        imitation_reward_description,
+        "其中，r_i^int表示第i个生成样本对应的模仿奖励，ε表示防止对数输入为零的正数下界，r_clip^int表示模仿奖励裁剪上限。当判别器对生成状态—动作对给出更高的专家样本判别概率时，该样本获得更高的模仿奖励。判别器参数更新时，算法分别从专家数据训练集和近期生产企业交互样本中抽取状态—动作批量；模仿奖励计算时，更新后的判别器对当前经验池批量中的状态—动作对进行评价。判别器参数随生产企业交互样本和策略变化持续更新。",
+    )
+
+    critic_intro = insert_paragraph_after(
+        critic_heading,
+        "本节在第3.3节所定义模仿奖励的基础上，进一步说明融合奖励的构造方式以及生产企业Critic、Actor和目标网络的参数更新过程。生产企业Critic采用双Q网络结构，其组成如图3-5所示。",
+        format_source=first_sample_content,
+    )
+    critic_picture = insert_picture_after(
+        critic_intro,
+        CRITIC_STRUCTURE_FIGURE,
+        body_template=first_sample_content,
+        width_inches=6.0,
+    )
+    critic_intro.paragraph_format.keep_with_next = True
+    critic_picture.paragraph_format.keep_with_next = True
+    critic_picture.paragraph_format.first_line_indent = Inches(0)
+    critic_picture.paragraph_format.left_indent = Inches(0)
+    critic_picture.paragraph_format.right_indent = Inches(0)
+    critic_caption = insert_paragraph_after(
+        critic_picture,
+        "图3-5  生产企业Critic双Q网络结构",
+        format_source=training_caption,
+    )
+    critic_description = insert_paragraph_after(
+        critic_caption,
+        "在Critic参数更新阶段，网络输入来自经验池采样得到的生产企业经验批量。第i个样本中的33维标准化状态向量与对应的4维动作向量拼接为37维状态—动作向量，随后分别进入在线第一Q网络和在线第二Q网络。两个Q网络均采用37-128-32-1的全连接结构，两个隐藏层均使用带泄漏线性整流函数，输出层分别得到Q_1与Q_2的标量估计。两个Q网络采用相同的输入维度和网络层级，但分别维护独立参数，彼此不共享参数。",
+        format_source=first_sample_content,
+    )
+    critic_target_description = insert_paragraph_after(
+        critic_description,
+        "在线Critic通过第一Q网络和第二Q网络分别估计经验样本的当前Q值。在Actor参数更新阶段，在线第一Q网络评价Actor依据当前状态生成的策略动作，并将价值梯度传递至Actor。目标Critic包含与之对应的第一目标Q网络和第二目标Q网络，其参数独立于在线Critic，用于输出下一状态—目标动作对的两个目标Q估计。",
+        format_source=first_sample_content,
+    )
+
     batch_alignment = find_paragraph(
         document, "本文实现中的一个重要细节是批量对齐"
     )
     replace_paragraph_text(
         batch_alignment,
-        "本文采用批量对齐机制。每一次网络参数更新阶段只从经验池采样一次生产企业经验批量。该批量的状态-动作部分用于构造判别器中的生成样本，该批量的完整经验样本又用于TD3的Critic目标值计算。因此，判别器给出的模仿奖励与Critic使用的环境奖励和下一状态在样本索引上保持一致。",
+        "为保证模仿奖励与TD3参数更新所用样本一一对应，本文在模仿奖励计算与Critic训练目标值计算之间采用批量对齐机制。每一次网络参数更新阶段只从经验池采样一次生产企业经验批量。判别器对该批量中的状态—动作部分计算模仿奖励，Critic使用同一批量中的动作、环境奖励、下一状态和终止标记计算训练目标值。因此，模仿奖励与Critic使用的其余经验字段在样本索引上保持一致。判别器自身的参数更新则使用专家样本批量与近期生产企业交互样本批量。",
     )
+    batch_alignment._p.getparent().remove(batch_alignment._p)
+    critic_target_description._p.addnext(batch_alignment._p)
     training_description = find_paragraph(document, "图3-1给出了")
     replace_paragraph_text(
         training_description,
-        "图3-4进一步展示了生成对抗模仿学习与TD3的联合训练流程。专家行为样本为判别器提供专家分布参照，生产企业在线交互形成的状态-动作对构成生成样本。判别器根据两类样本之间的差异产生模仿奖励；该奖励与环境奖励融合后进入Critic目标值计算，并通过Critic对策略动作的价值估计影响Actor更新。模仿学习信号在训练过程中的传递路径可以概括为“判别器—融合奖励—Critic—Actor”。",
+        "图3-3突出展示了生成对抗模仿学习与TD3联合训练中的奖励传递和价值更新主路径。专家行为样本为判别器提供专家分布参照，生产企业在线交互形成的状态—动作对构成生成样本。判别器依据两类样本构造模仿奖励，该奖励与环境奖励融合后进入Critic训练目标值计算，并通过价值估计影响Actor更新。Actor参数更新还包含由判别器评价当前策略动作所形成的对抗生成目标，两类更新信号的具体构造见第3.4节。",
     )
     replace_paragraph_text(
         training_caption,
-        "图3-4  基于生成对抗模仿学习与TD3的主体训练方案",
+        "图3-3  基于生成对抗模仿学习与TD3的主体训练方案",
+    )
+
+    reward_intro = find_paragraph(
+        document, "生产企业 Critic 使用环境奖励与模仿奖励构造融合奖励"
+    )
+    replace_paragraph_text(
+        reward_intro,
+        "在同一经验批量上完成模仿奖励计算后，生产企业Critic使用环境奖励与模仿奖励构造融合奖励。为减小训练过程中环境奖励量级变化对价值更新的影响，环境奖励先依据运行中的奖励尺度估计进行归一化，并在给定区间内裁剪。本文采用随训练步数递增的warm-up模仿奖励权重。在训练早期，判别器尚未形成稳定的区分边界；如果模仿奖励权重过大，判别器的不可靠打分会引起Critic训练目标值的较大偏移，并通过价值估计影响Actor更新。因此，训练初期使用较小的模仿奖励权重，随后逐步提升至基础权重。融合奖励定义为：",
+    )
+
+    reward_description = find_paragraph(document, "其中， 表示融合奖励")
+    reward_description_replaced = replace_text_across_nodes(
+        reward_description,
+        "表示仿真环境给出的奖励",
+        "表示经尺度归一化与裁剪后的环境奖励",
+    )
+    if not reward_description_replaced:
+        raise RuntimeError("Unable to update the environment-reward definition.")
+
+    reward_target_description_replaced = replace_text_across_nodes(
+        reward_description,
+        "目标 Critic 根据下一状态和目标动作输出两个 Q 值估计，TD3 取两个估计值中的较小值，并与融合奖励共同构造当前 Critic 更新所需的目标值。目标动作与目标值定义如下：",
+        "目标Critic中的第一目标Q网络和第二目标Q网络分别对下一状态—目标动作对进行价值估计。TD3取两个目标Q估计中的较小值，并与融合奖励共同构造Critic训练目标值。目标动作与Critic训练目标值定义如下：",
+    )
+    if not reward_target_description_replaced:
+        raise RuntimeError("Unable to update the target-Q description.")
+
+    target_value_description = find_paragraph(document, "其中， 表示目标 Actor")
+    target_branch_replaced = replace_text_across_nodes(
+        target_value_description,
+        "表示目标 Critic 模块中的第  个 Q 值估计分支",
+        "表示目标Critic中相应目标Q网络的输出",
+    )
+    target_inline_math = target_value_description._p.xpath("./m:oMath")
+    if len(target_inline_math) < 4:
+        raise RuntimeError("Unable to locate the inline target-Q index.")
+    target_value_description._p.remove(target_inline_math[2])
+    target_value_replaced = replace_text_across_nodes(
+        target_value_description,
+        "该目标值形式沿用 TD3 中取双 Q 估计较小值的目标值构造方式",
+        "Critic训练目标值沿用TD3中取两个目标Q估计较小值的构造方式",
+    )
+    target_error_replaced = replace_text_across_nodes(
+        target_value_description,
+        "Critic 根据当前 Q 值与目标值之间的误差更新参数：",
+        "Critic根据在线Q估计与训练目标值之间的误差更新参数：",
+    )
+    if not all((target_branch_replaced, target_value_replaced, target_error_replaced)):
+        raise RuntimeError("Unable to update the target-value terminology.")
+
+    critic_loss_description = find_paragraph(document, "其中， 表示 Critic 损失")
+    online_branch_replaced = replace_text_across_nodes(
+        critic_loss_description,
+        "表示在线 Critic 模块中的第 k 个 Q 值估计分支",
+        "表示第k个在线Q网络的输出",
+    )
+    if not online_branch_replaced:
+        raise RuntimeError("Unable to update the online-Q terminology.")
+    actor_update_intro_replaced = replace_text_across_nodes(
+        critic_loss_description,
+        "在 Critic 更新之后，生产企业 Actor 通过最大化当前 Critic 对其策略动作的价值估计完成参数更新。Actor 损失函数定义为：",
+        "Critic参数更新后，生产企业Actor同时依据在线第一Q网络的价值估计和固定判别器的行为判别结果更新参数。前者提高当前策略动作的Q值，后者提高Actor生成动作被判别器判定为专家行为的概率。Actor的对抗生成损失与总损失定义为：",
+    )
+    if not actor_update_intro_replaced:
+        raise RuntimeError("Unable to update the Actor-loss introduction.")
+    actor_loss_equation = Paragraph(
+        critic_loss_description._p.getnext(),
+        critic_loss_description._parent,
+    )
+    replace_equation_paragraph(actor_loss_equation, ACTOR_TOTAL_LOSS_MATHML)
+    actor_loss_description = Paragraph(
+        actor_loss_equation._p.getnext(),
+        actor_loss_equation._parent,
+    )
+    replace_paragraph_text(
+        actor_loss_description,
+        "式中，Actor总损失由TD3策略目标和对抗生成目标组成。TD3策略目标通过在线第一Q网络提高当前策略动作的价值估计；对抗生成目标分别在经验池状态和专家状态上生成动作，并提高这些动作被判别器判定为专家行为的概率。B表示批量大小，对抗权重用于调节两类目标的相对作用。Actor更新期间，判别器参数保持固定，梯度仅经判别器输入端传递至Actor。完成Actor与Critic更新后，目标网络采用软更新形式：",
     )
 
 
@@ -1484,11 +1754,12 @@ def verify(document: Document, source_equation_count: int) -> None:
         "一次仿真由连续推进的若干天组成",
         "在仿真实验中，系统按照含有6个阶段",
         "3.1 主体决策模型",
-        "3.2 模型训练方案",
+        "3.2 GAIL+TD3联合训练总体方案",
         "图3-1  生产企业Actor神经网络结构",
-        "图3-2  生产企业Critic与判别器神经网络结构",
-        "图3-3  模型训练中的多回合仿真流程",
-        "图3-4  基于生成对抗模仿学习与TD3的主体训练方案",
+        "图3-2  模型训练中的多回合仿真流程",
+        "图3-3  基于生成对抗模仿学习与TD3的主体训练方案",
+        "图3-4  生产企业GAIL判别器网络与损失计算结构",
+        "图3-5  生产企业Critic双Q网络结构",
         "本文将这一完整过程定义为一个回合（episode）",
         "在跨回合交互中持续更新",
         "在上述多回合交互框架下",
@@ -1504,8 +1775,14 @@ def verify(document: Document, source_equation_count: int) -> None:
         "第4.3节所述扩展模型将在该结构基础上融合Transformer历史特征",
         "Actor由三层可训练的全连接映射组成",
         "该网络构成GAIL+TD3模型中的单步Actor",
-        "Critic由两个参数相互独立的Q值估计分支组成",
-        "判别器的100维隐藏层构成状态—动作样本的中间特征表示",
+        "随后分别进入在线第一Q网络和在线第二Q网络",
+        "前两个隐藏层均采用双曲正切函数",
+        "两类得分与相应类别标签共同用于计算包含熵正则项的判别器损失",
+        "两个Q网络采用相同的输入维度和网络层级，但分别维护独立参数",
+        "模仿奖励计算使用该经验批量中的状态-动作部分",
+        "Actor总损失由TD3策略目标和对抗生成目标组成",
+        "生产企业生成样本的模仿奖励采用非饱和形式",
+        "判别器自身的参数更新则使用专家样本批量与近期生产企业交互样本批量",
         "Actor分支以长度为5的历史状态序列作为表征模块输入",
         "Critic分支把历史序列中每个时间步的33维状态与4维动作拼接为37维状态—动作向量",
         "判别器分支以专家或生成轨迹的历史状态—动作序列作为输入",
@@ -1528,7 +1805,15 @@ def verify(document: Document, source_equation_count: int) -> None:
         "图2-1  初步设计的仿真运行规则示意图",
         "在每个回合中，系统按照含有 6 个阶段",
         "图3-2  基于生成对抗模仿学习与TD3的主体训练方案",
-        "图3-3  基于生成对抗模仿学习与TD3的主体训练方案",
+        "图3-4  基于生成对抗模仿学习与TD3的主体训练方案",
+        "图3-5  基于生成对抗模仿学习与TD3的主体训练方案",
+        "图3-2  生产企业Critic双Q网络结构",
+        "图3-3  生产企业GAIL判别器网络结构",
+        "图3-4  模型训练中的多回合仿真流程",
+        "图3-2  生产企业Critic与判别器神经网络结构",
+        "The two Q-value branches use the same input dimensions and independent parameters.",
+        "The same discriminator parameters are used for expert and generated samples.",
+        "模仿奖励由判别器概率直接给出",
         "4.3 表征增强模块的训练接入与方法边界",
         "4.3 表征增强模块的训练接入",
         "4.3 历史表征模块与联合训练",
@@ -1543,6 +1828,7 @@ def verify(document: Document, source_equation_count: int) -> None:
         "如果模型需要进一步利用历史信息",
         "3.1 模型训练方案",
         "3.2 状态、动作与经验样本",
+        "3.2 模型训练方案",
         "图6-2 GAIL+TD3与Transformer+GAIL+TD3训练结果对比",
         "图6-3 三种主体训练方案下DSCR 低于 1",
         "并非单调下降",
@@ -1576,10 +1862,10 @@ def verify(document: Document, source_equation_count: int) -> None:
         raise RuntimeError("Table 4-1 sequence-length header was not updated.")
     if len(document.tables) != 6:
         raise RuntimeError(f"Expected 6 tables, found {len(document.tables)}.")
-    if len(document.inline_shapes) != 14:
-        raise RuntimeError(f"Expected 14 inline figures, found {len(document.inline_shapes)}.")
+    if len(document.inline_shapes) != 15:
+        raise RuntimeError(f"Expected 15 inline figures, found {len(document.inline_shapes)}.")
     equation_count = len(document.element.body.xpath(".//m:oMath"))
-    expected_equation_count = source_equation_count + len(EQUATIONS) - 30
+    expected_equation_count = source_equation_count + len(EQUATIONS) - 36
     if equation_count != expected_equation_count:
         raise RuntimeError(
             f"Expected {expected_equation_count} equations, "
@@ -1603,7 +1889,8 @@ def build() -> None:
         DAY_SIMULATION_FIGURE,
         TRAINING_EPISODE_FIGURE,
         ACTOR_STRUCTURE_FIGURE,
-        CRITIC_DISCRIMINATOR_STRUCTURE_FIGURE,
+        CRITIC_STRUCTURE_FIGURE,
+        DISCRIMINATOR_STRUCTURE_FIGURE,
         GAIL_TD3_TRAINING_FIGURE,
         TRANSFORMER_THREE_BRANCH_FIGURE,
         TD3_GAIL_FIGURE,
@@ -1631,7 +1918,7 @@ def build() -> None:
     )
     replace_picture_before_caption(
         document,
-        "图3-4  基于生成对抗模仿学习与TD3的主体训练方案",
+        "图3-3  基于生成对抗模仿学习与TD3的主体训练方案",
         GAIL_TD3_TRAINING_FIGURE,
         width_inches=6.0,
     )
