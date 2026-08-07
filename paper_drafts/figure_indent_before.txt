@@ -1,0 +1,16 @@
+[9] indent=None align=CENTER (1) drawing=True text=
+[10] indent=None align=CENTER (1) drawing=False text=图2-1  初步设计的仿真运行规则示意图
+[28] indent=266700 align=JUSTIFY (3) drawing=False text=图3-1给出了基于生成对抗模仿学习与 TD3 的主体训练方案。在该方案中，专家行为样本为判别器提供专家分布参照，生产企业在线交互样本构成生成样本。判别器根据两类状态-动作样本之间的差异产生模仿奖励。本文实现将该模仿奖励与环境奖励融合，并将融合奖励用于 TD3 的 Critic 目标值计算，使 GAIL 信号通过价值估计影响 Actor 更新。模仿学习信号进入策略学习过程的路径可以概括为“判别器—融合奖励—Critic—Actor”。
+[29] indent=None align=CENTER (1) drawing=True text=
+[30] indent=None align=CENTER (1) drawing=False text=图3-1  基于生成对抗模仿学习与TD3的主体训练方案
+[71] indent=None align=CENTER (1) drawing=False text=[此处插入图4-1：Transformer结构图]
+[72] indent=None align=CENTER (1) drawing=False text=图4-1  生产企业主体三分支Transformer表征结构
+[87] indent=None align=CENTER (1) drawing=False text=[此处插入图4-2流程图]
+[88] indent=None align=CENTER (1) drawing=False text=图4-2  基于Transformer表征增强的GAIL+TD3生产企业主体训练方案
+[89] indent=266700 align=None drawing=False text=图4-2展示了 Transformer 表征增强模块与第3章 GAIL+TD3 训练方案的衔接关系。该扩展不改变奖励融合、Actor-Critic 更新顺序和环境交互规则，而是在生产企业主体的网络输入端加入历史状态或历史状态-动作编码。
+[98] indent=None align=CENTER (1) drawing=True text=
+[99] indent=None align=CENTER (1) drawing=False text=图5-1 网页实验系统任务描述页
+[101] indent=None align=CENTER (1) drawing=True text=
+[102] indent=None align=CENTER (1) drawing=False text=图5-2 网页实验系统每日经营决策页
+[104] indent=None align=CENTER (1) drawing=True text=
+[105] indent=None align=CENTER (1) drawing=False text=图5-3 每日经营决策页中的规则和成交明细

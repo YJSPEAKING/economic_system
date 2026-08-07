@@ -1,0 +1,9 @@
+????	0
+GAIL: Generative Adversarial Imitation Learning	1
+TD3: Twin Delayed Deep Deterministic Policy Gradient	1
+Transformer Encoder	1
+LLM: Large Language Model	1
+
+RELEVANT PARAGRAPHS
+[4] 基于上述背景，模仿学习（IL: Imitation Learning）可以作为强化学习在经济主体决策生成中的补充方法。模仿学习以专家行为数据为参照，目标是使生成行为接近专家数据中体现的决策模式。本文在原有多主体经济仿真系统基础上，围绕生产企业主体的决策模型进行改进。一方面，本文将生成对抗模仿学习（GAIL: Generative Adversarial Imitation Learning）与双延迟深度确定性策略梯度算法（TD3: Twin Delayed Deep Deterministic Policy Gradient）结合，利用判别器提供与专家行为相关的模仿信号。另一方面，本文在扩展模型中将 Transformer 编码器（Transformer Encoder）加入生产企业策略网络的状态表征环节，使 Actor 在输出动作前能够结合当前观测与历史状态序列。该扩展仍然保持 GAIL 与 Actor-Critic 结构结合的训练方式，即判别器结果不直接作为 Actor 的监督目标，而是通过 Critic 对价值估计的影响间接作用于策略更新。
+[23] 专家数据是连接有限理性行为与模型训练目标的中间表示。前期项目研究材料将专家数据来源概括为人类参与的仿真实验、大语言模型（LLM: Large Language Model）辅助决策和真实企业行为数据。本文当前整理的数据来源于前两类实验材料，即网页实验系统中的参与式采集数据，以及在同一仿真接口下形成的大模型辅助批量采集数据。本文未将真实企业行为数据写入当前专家样本文件；该来源的数据对齐方法仍需后续补充。
