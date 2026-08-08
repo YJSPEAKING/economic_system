@@ -305,6 +305,89 @@ ACTOR_TOTAL_LOSS_MATHML = r"""
 </math>
 """
 
+TRANSFORMER_EMBEDDING_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>E</mi><mo>=</mo><mi>X</mi><msub><mi>W</mi><mi>e</mi></msub>
+  <mo>+</mo><msub><mi>b</mi><mi>e</mi></msub><mo>+</mo><mi>P</mi>
+</math>
+"""
+
+TRANSFORMER_QKV_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <msub><mi>Q</mi><mi>h</mi></msub><mo>=</mo><mi>E</mi><msubsup><mi>W</mi><mi>h</mi><mi>Q</mi></msubsup><mo>,</mo><mspace width="1em"/>
+  <msub><mi>K</mi><mi>h</mi></msub><mo>=</mo><mi>E</mi><msubsup><mi>W</mi><mi>h</mi><mi>K</mi></msubsup><mo>,</mo><mspace width="1em"/>
+  <msub><mi>V</mi><mi>h</mi></msub><mo>=</mo><mi>E</mi><msubsup><mi>W</mi><mi>h</mi><mi>V</mi></msubsup>
+</math>
+"""
+
+TRANSFORMER_HEAD_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <msub><mi mathvariant="normal">head</mi><mi>h</mi></msub><mo>=</mo>
+  <mi mathvariant="normal">softmax</mi><mfenced>
+    <mfrac>
+      <mrow><msub><mi>Q</mi><mi>h</mi></msub><msubsup><mi>K</mi><mi>h</mi><mi>T</mi></msubsup></mrow>
+      <msqrt><msub><mi>d</mi><mi>h</mi></msub></msqrt>
+    </mfrac>
+  </mfenced><msub><mi>V</mi><mi>h</mi></msub>
+</math>
+"""
+
+TRANSFORMER_MHA_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi mathvariant="normal">MHA</mi><mfenced><mi>E</mi></mfenced><mo>=</mo>
+  <mi mathvariant="normal">Concat</mi><mfenced>
+    <msub><mi mathvariant="normal">head</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo><mo>,</mo>
+    <msub><mi mathvariant="normal">head</mi><mi>H</mi></msub>
+  </mfenced><msup><mi>W</mi><mi>O</mi></msup>
+</math>
+"""
+
+TRANSFORMER_FFN_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi mathvariant="normal">FFN</mi><mfenced><mi>U</mi></mfenced><mo>=</mo>
+  <msub><mi>W</mi><mn>2</mn></msub>
+  <mi mathvariant="normal">GELU</mi><mfenced>
+    <msub><mi>W</mi><mn>1</mn></msub><mi>U</mi><mo>+</mo><msub><mi>b</mi><mn>1</mn></msub>
+  </mfenced><mo>+</mo><msub><mi>b</mi><mn>2</mn></msub>
+</math>
+"""
+
+TRANSFORMER_BRANCH_SET_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>b</mi><mo>&#x2208;</mo>
+  <mfenced open="{" close="}" separators=",">
+    <mi>A</mi><mi>Q</mi><mi>D</mi>
+  </mfenced>
+</math>
+"""
+
+TRANSFORMER_HISTORY_INPUT_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <msubsup>
+    <mi>H</mi><mi>t</mi>
+    <mfenced open="(" close=")"><mi>b</mi></mfenced>
+  </msubsup>
+</math>
+"""
+
+TRANSFORMER_REPRESENTATION_MODULE_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <msup>
+    <mi mathvariant="script">F</mi>
+    <mfenced open="(" close=")"><mi>b</mi></mfenced>
+  </msup>
+</math>
+"""
+
+TRANSFORMER_HISTORY_FEATURE_MATHML = r"""
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <msubsup>
+    <mi>z</mi><mi>t</mi>
+    <mfenced open="(" close=")"><mi>b</mi></mfenced>
+  </msubsup>
+</math>
+"""
+
 EQUATIONS = (
     ACTOR_NETWORK_MATHML,
     NOISY_ACTION_MATHML,
@@ -315,6 +398,15 @@ EQUATIONS = (
     ACTOR_SCORE_MATHML,
     ACTOR_JS_MATHML,
     ACTOR_MEAN_SEM_MATHML,
+    TRANSFORMER_EMBEDDING_MATHML,
+    TRANSFORMER_QKV_MATHML,
+    TRANSFORMER_HEAD_MATHML,
+    TRANSFORMER_MHA_MATHML,
+    TRANSFORMER_FFN_MATHML,
+    TRANSFORMER_BRANCH_SET_MATHML,
+    TRANSFORMER_HISTORY_INPUT_MATHML,
+    TRANSFORMER_REPRESENTATION_MODULE_MATHML,
+    TRANSFORMER_HISTORY_FEATURE_MATHML,
 )
 
 
@@ -411,6 +503,26 @@ def insert_paragraph_after(
         source_rpr = first_run_properties(format_source)
         if source_rpr is not None:
             run._r.insert(0, source_rpr)
+    return paragraph
+
+
+def insert_mixed_paragraph_after(
+    reference: Paragraph,
+    parts: tuple[tuple[str, str], ...],
+    *,
+    format_source: Paragraph,
+) -> Paragraph:
+    paragraph = insert_paragraph_after(reference, format_source=format_source)
+    source_rpr = first_run_properties(format_source)
+    for kind, content in parts:
+        if kind == "text":
+            run = paragraph.add_run(content)
+            if source_rpr is not None:
+                run._r.insert(0, deepcopy(source_rpr))
+        elif kind == "equation":
+            paragraph._p.append(mathml_to_omml(content))
+        else:
+            raise ValueError(f"Unsupported paragraph part: {kind!r}")
     return paragraph
 
 
@@ -524,34 +636,23 @@ def insert_transformer_parameter_table_after(
     reference: Paragraph,
 ) -> None:
     rows = (
-        (
-            "分支",
-            "历史输入",
-            "序列长度（l）",
-            "编码层数",
-            "注意力头数",
-            "表征维度",
-            "前馈层维度",
-            "Dropout",
-        ),
-        ("Actor", "状态序列", "5", "1", "4", "32", "64", "0.0"),
-        ("Critic", "状态—动作序列", "5", "1", "4", "32", "64", "0.1"),
-        (
-            "判别器",
-            "专家或生成状态—动作序列",
-            "5",
-            "1",
-            "4",
-            "100",
-            "200",
-            "0.1",
-        ),
+        ("参数", "Actor", "Critic", "判别器"),
+        ("历史输入", "状态序列", "状态—动作序列", "专家或生成状态—动作序列"),
+        ("单时间步输入维度", "33", "37", "37"),
+        ("输入投影", "33→32", "37→32", "37→100"),
+        ("序列长度（l）", "5", "5", "5"),
+        ("编码层数", "1", "1", "1"),
+        ("注意力头数（H）", "4", "4", "4"),
+        ("表征维度（d_model）", "32", "32", "100"),
+        ("单头维度（d_h）", "8", "8", "25"),
+        ("前馈层维度", "64", "64", "200"),
+        ("Dropout", "0.0", "0.1", "0.1"),
     )
     table = document.add_table(rows=len(rows), cols=len(rows[0]))
     table.style = document.tables[2].style
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
-    widths = (0.55, 1.35, 0.70, 0.60, 0.70, 0.65, 0.75, 0.60)
+    widths = (1.45, 1.20, 1.25, 2.15)
     total_width_twips = int(sum(widths) * 1440)
     table_width = table._tbl.tblPr.first_child_found_in("w:tblW")
     table_width.set(qn("w:type"), "dxa")
@@ -1529,9 +1630,75 @@ def update_chapter_four(document: Document) -> None:
     table_caption_template = find_paragraph(
         document, "表6-2 三种主体训练方案的最终性能统计"
     )
-    parameter_description = insert_paragraph_after(
+    equation_template = Paragraph(sequence_intro._p.getnext(), sequence_intro._parent)
+    notation_description = insert_mixed_paragraph_after(
         sequence_description,
-        "本文将线性序列映射、可学习位置嵌入、Transformer编码和末时刻特征读取组成的结构定义为Transformer历史序列表征模块。该模块首先把序列中每个时间步的输入投影至统一隐藏空间，并与对应的可学习位置嵌入相加；单层Transformer编码器随后利用多头自注意力和前馈子层提取序列内部的时序关联；编码器最后一个时间位置的输出经层归一化后形成定长历史特征。本文将该历史特征的维数定义为表征维度。三个分支均采用长度为5的历史序列、4个注意力头和高斯误差线性单元（GELU：Gaussian Error Linear Unit）激活函数。Actor与Critic分支的表征维度为32，前馈层维度为64；判别器分支的表征维度为100，前馈层维度为200。各分支分别维护独立的线性映射、位置嵌入、Transformer编码器和层归一化参数，彼此不共享参数。主要参数设置见表4-1。",
+        (
+            ("text", "为统一图4-1与正文的符号表示，令"),
+            ("equation", TRANSFORMER_BRANCH_SET_MATHML),
+            ("text", "分别表示Actor、Critic和判别器分支。第t个决策时刻的历史输入序列记为"),
+            ("equation", TRANSFORMER_HISTORY_INPUT_MATHML),
+            ("text", "，相应的历史序列表征模块与输出特征分别记为"),
+            ("equation", TRANSFORMER_REPRESENTATION_MODULE_MATHML),
+            ("text", "和"),
+            ("equation", TRANSFORMER_HISTORY_FEATURE_MATHML),
+            ("text", "。在下述通用计算过程中，以X表示任一分支的历史输入序列。"),
+        ),
+        format_source=body_template,
+    )
+    module_description = insert_paragraph_after(
+        notation_description,
+        "本文将线性序列映射、可学习位置嵌入、多头自注意力、前馈子层和末时刻特征读取组成的结构定义为Transformer历史序列表征模块。该模块首先将序列中每个时间步的输入线性投影至统一的表征空间，再与对应位置的可学习位置嵌入相加，得到编码器输入E：",
+        format_source=body_template,
+    )
+    embedding_equation = insert_equation_after(
+        module_description,
+        TRANSFORMER_EMBEDDING_MATHML,
+        equation_template=equation_template,
+    )
+    embedding_description = insert_paragraph_after(
+        embedding_equation,
+        "式中，W_e和b_e分别表示输入投影的权重矩阵与偏置向量，P表示与序列位置对应的可学习位置嵌入。输入投影将单个时间步的原始输入维度d_in转换为表征维度d_model。Actor分支的单时间步输入为33维状态向量；Critic和判别器分支的单时间步输入均为37维状态—动作向量。可学习位置嵌入与投影结果具有相同的序列长度和表征维度。对于编码器中的第h个注意力头，查询、键和值分别定义为：",
+        format_source=body_template,
+    )
+    qkv_equation = insert_equation_after(
+        embedding_description,
+        TRANSFORMER_QKV_MATHML,
+        equation_template=equation_template,
+    )
+    head_description = insert_paragraph_after(
+        qkv_equation,
+        "式中，W_h^Q、W_h^K和W_h^V表示将编码器输入映射至第h个注意力子空间的查询、键和值投影参数。各投影将表征维度d_model映射至单头维度d_h。第h个注意力头根据缩放点积计算不同时间位置之间的关联权重，其输出定义为：",
+        format_source=body_template,
+    )
+    head_equation = insert_equation_after(
+        head_description,
+        TRANSFORMER_HEAD_MATHML,
+        equation_template=equation_template,
+    )
+    mha_description = insert_paragraph_after(
+        head_equation,
+        "式中，Q_h、K_h和V_h分别表示第h个注意力头的查询、键和值，d_h表示单头维度。缩放项用于控制点积随特征维度增大而产生的数值变化。H个注意力头在不同特征子空间内并行计算，各头输出经拼接和输出投影后形成多头自注意力结果：",
+        format_source=body_template,
+    )
+    mha_equation = insert_equation_after(
+        mha_description,
+        TRANSFORMER_MHA_MATHML,
+        equation_template=equation_template,
+    )
+    attention_parameter_description = insert_paragraph_after(
+        mha_equation,
+        "式中，H表示注意力头数，W^O表示多头输出投影矩阵。本文三个分支均设置H=4。单头维度由表征维度除以注意力头数得到，因此Actor与Critic分支的表征维度为32，单头维度均为8；判别器分支的表征维度为100，单头维度为25。多头自注意力输出经过残差连接和层归一化后进入前馈子层。前馈子层由两层全连接映射组成，其计算形式为：",
+        format_source=body_template,
+    )
+    ffn_equation = insert_equation_after(
+        attention_parameter_description,
+        TRANSFORMER_FFN_MATHML,
+        equation_template=equation_template,
+    )
+    parameter_description = insert_paragraph_after(
+        ffn_equation,
+        "式中，U表示多头自注意力子层完成残差连接和层归一化后的输出。前馈子层的第一层将表征维度扩展至前馈层维度，并采用高斯误差线性单元（GELU：Gaussian Error Linear Unit）进行非线性变换；第二层再将特征映射回原表征维度。前馈子层输出随后经过第二次残差连接和层归一化。三个分支均采用1个Transformer编码层，各分支的前馈层维度和Dropout设置见表4-1。编码器最后一个时间位置的输出再经独立的层归一化形成定长历史特征，其维数与相应分支的表征维度一致。三个分支分别维护独立的输入投影、位置嵌入、Transformer编码器和末时刻特征层归一化参数，彼此不共享参数。",
         format_source=body_template,
     )
     table_caption = insert_paragraph_after(
@@ -1593,7 +1760,7 @@ def update_chapter_four(document: Document) -> None:
     online_training = find_paragraph(document, "在线训练中，专家数据和生成数据按回合位置构造")
     replace_paragraph_text(
         online_training,
-        "Actor分支以长度为5的历史状态序列作为表征模块输入，并得到32维历史状态特征。该特征与33维当前状态向量拼接，形成65维联合输入；随后，一组独立的全连接动作头按照65-128-32-4的结构生成4维确定性动作。该连接方式保留当前时刻状态，同时利用历史交互信息补充动作生成所需的时序特征。",
+        "Actor分支以长度为5的历史状态序列作为表征模块输入，并得到32维历史状态特征。该特征与33维当前状态向量拼接，形成65维联合输入；随后，全连接动作输出网络按照65-128-32-4的结构生成4维确定性动作。该连接方式保留当前时刻状态，同时利用历史交互信息补充动作生成所需的时序特征。",
     )
 
     method_boundary = find_paragraph(document, "该扩展作用于生产企业主体")
@@ -1603,7 +1770,7 @@ def update_chapter_four(document: Document) -> None:
     )
     insert_paragraph_after(
         method_boundary,
-        "判别器分支以专家或生成轨迹的历史状态—动作序列作为输入。每个时间步的37维状态—动作向量先被映射至100维隐藏空间，表征模块输出100维历史状态—动作特征；层归一化与线性输出头随后产生单个logits值，并经Sigmoid函数转换为专家样本判别概率。除上述输入表征与网络输入维度调整外，判别器损失、模仿奖励构造、融合奖励以及Actor-Critic参数更新均采用第3章定义的训练方式。",
+        "判别器分支以专家或生成轨迹的历史状态—动作序列作为输入。每个时间步的37维状态—动作向量先被映射至100维隐藏空间。表征模块在完成末时刻特征读取与层归一化后，输出100维历史状态—动作特征；线性输出层随后产生单个logits值，并经Sigmoid函数转换为专家样本判别概率。除上述输入表征与网络输入维度调整外，判别器损失、模仿奖励构造、融合奖励以及Actor-Critic参数更新均采用第3章定义的训练方式。",
         format_source=body_template,
     )
 
@@ -1767,11 +1934,18 @@ def verify(document: Document, source_equation_count: int) -> None:
         "图4-1  生产企业主体三分支Transformer表征结构",
         "4.2 Transformer历史序列表征模块",
         "4.3 历史表征与三类网络的融合",
-        "本文将线性序列映射、可学习位置嵌入、Transformer编码和末时刻特征读取组成的结构定义为Transformer历史序列表征模块",
+        "本文将线性序列映射、可学习位置嵌入、多头自注意力、前馈子层和末时刻特征读取组成的结构定义为Transformer历史序列表征模块",
+        "为统一图4-1与正文的符号表示",
+        "相应的历史序列表征模块与输出特征分别记为",
+        "末时刻特征层归一化参数",
+        "表征模块在完成末时刻特征读取与层归一化后，输出100维历史状态—动作特征",
+        "对于编码器中的第h个注意力头，查询、键和值分别定义为",
+        "Actor与Critic分支的表征维度为32，单头维度均为8",
+        "判别器分支的表征维度为100，单头维度为25",
         "本文将历史序列所包含的时间步数定义为序列长度，并记为",
         "可用历史序列的时间步数不足",
         "本次实验中的模仿学习与历史表征改进均应用于生产企业主体",
-        "三个分支均采用长度为5的历史序列、4个注意力头",
+        "本文三个分支均设置H=4",
         "第4.3节所述扩展模型将在该结构基础上融合Transformer历史特征",
         "Actor由三层可训练的全连接映射组成",
         "该网络构成GAIL+TD3模型中的单步Actor",
@@ -1849,6 +2023,9 @@ def verify(document: Document, source_equation_count: int) -> None:
         "最终判别器",
         "对动作扰动的识别能力",
         "第6.4节",
+        "输出层归一化参数",
+        "表征模块输出100维历史状态—动作特征；层归一化与线性输出层随后产生单个logits值",
+        "Actor与Critic分支的前馈层维度为64，判别器分支为200；Actor分支的Dropout为0，Critic与判别器分支均为0.1",
     )
     for value in forbidden:
         if value in text:
@@ -1880,7 +2057,8 @@ def build() -> None:
         raise RuntimeError("The source DOCX changed after this builder was prepared.")
     if not MML2OMML_XSL.exists():
         raise FileNotFoundError(MML2OMML_XSL)
-    create_paper_figures()
+    if not DISCRIMINATOR_FIGURE.exists() or not ACTOR_FIGURE.exists():
+        create_paper_figures()
     create_english_learning_curve_figures()
     create_english_dscr_risk_figure()
     if not DISCRIMINATOR_FIGURE.exists() or not ACTOR_FIGURE.exists():

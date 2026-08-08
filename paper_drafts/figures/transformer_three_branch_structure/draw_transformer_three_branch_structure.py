@@ -167,10 +167,10 @@ def connect_vertical(ax, x, upper_y, upper_height, lower_y, lower_height):
 
 
 def add_branch_heading(ax, x, label):
-    add_text(ax, x, 21.45, label, size=13.5, bold=True)
+    add_text(ax, x, 18.10, label, size=13.5, bold=True)
     ax.plot(
         [x - 2.35, x + 2.35],
-        [21.08, 21.08],
+        [17.73, 17.73],
         color=EDGE,
         linewidth=1.8,
         zorder=2,
@@ -178,8 +178,8 @@ def add_branch_heading(ax, x, label):
 
 
 def add_representation_module(ax, x, input_label, module_symbol):
-    input_y, input_h = 20.05, 0.90
-    module_y, module_h = 18.35, 1.18
+    input_y, input_h = 16.62, 0.90
+    module_y, module_h = 14.98, 1.18
     add_box(
         ax,
         (x, input_y),
@@ -221,7 +221,7 @@ def add_concat_module(
     historical_label,
     output_label,
 ):
-    module_left, module_bottom = x - 2.53, 12.55
+    module_left, module_bottom = x - 2.53, 9.02
     module_width, module_height = 5.06, 4.55
     border = FancyBboxPatch(
         (module_left, module_bottom),
@@ -245,7 +245,7 @@ def add_concat_module(
         zorder=6,
     )
 
-    input_y, input_h, input_w = 15.75, 1.00, 2.30
+    input_y, input_h, input_w = 12.23, 1.00, 2.30
     left_x, right_x = x - 1.25, x + 1.25
     add_box(
         ax,
@@ -270,13 +270,13 @@ def add_concat_module(
         ax,
         [
             (x, source_y - source_h / 2),
-            (x, 17.35),
-            (target_x, 17.35),
+            (x, 13.82),
+            (target_x, 13.82),
             (target_x, input_y + input_h / 2),
         ],
     )
 
-    concat_y = 14.35
+    concat_y = 10.82
     ax.scatter(
         [x],
         [concat_y],
@@ -299,7 +299,7 @@ def add_concat_module(
         (x + 0.18, concat_y + 0.25),
     )
 
-    output_y, output_h = 13.20, 0.72
+    output_y, output_h = 9.67, 0.72
     add_box(
         ax,
         (x, output_y),
@@ -331,14 +331,14 @@ def draw_actor_branch(ax, x):
         historical_label="Historical State Feature\n$z_t^A$",
         output_label=r"$[s_t\,;\,z_t^A]$",
     )
-    head_y, head_h = 11.25, 0.80
-    action_y, action_h = 10.02, 0.80
+    head_y, head_h = 8.02, 0.80
+    action_y, action_h = 6.78, 0.80
     add_box(
         ax,
         (x, head_y),
         3.40,
         head_h,
-        r"FC Action Head  $\mu_\psi(\cdot)$",
+        r"Action Output Network  $\mu_\psi(\cdot)$",
         fill=OUTPUT_FILL,
         fontsize=9.5,
     )
@@ -375,14 +375,14 @@ def draw_critic_branch(ax, x):
         historical_label="Historical State-Action\nFeature\n$z_t^Q$",
         output_label=r"$[s_t,a_t\,;\,z_t^Q]$",
     )
-    head_y, head_h = 11.25, 0.80
-    output_q_y, output_q_h = 9.98, 0.78
+    head_y, head_h = 8.02, 0.80
+    output_q_y, output_q_h = 6.74, 0.78
     add_box(
         ax,
         (x, head_y),
         3.10,
         head_h,
-        "Twin Q Heads",
+        "Twin Q Output Branches",
         fill=OUTPUT_FILL,
         fontsize=9.6,
         bold=True,
@@ -427,14 +427,14 @@ def draw_discriminator_branch(ax, x):
         "Expert / Generated State-Action Sequence\n$H_t^{sa}$",
         r"$\mathcal{F}^{D}$",
     )
-    head_y, head_h = 15.55, 1.00
-    probability_y, probability_h = 13.55, 0.92
+    head_y, head_h = 12.22, 1.00
+    probability_y, probability_h = 10.22, 0.92
     add_title_subtitle_box(
         ax,
         (x, head_y),
         3.85,
         head_h,
-        "Discriminator Head",
+        "Discriminator Output Layer",
         "Linear Projection + Sigmoid",
         fill=OUTPUT_FILL,
         title_size=10.0,
@@ -457,7 +457,7 @@ def draw_discriminator_branch(ax, x):
 
 
 def add_common_module_definition(ax):
-    left, bottom, width, height = 0.55, 4.45, 16.90, 3.25
+    left, bottom, width, height = 0.55, 19.05, 16.90, 3.25
     border = FancyBboxPatch(
         (left, bottom),
         width,
@@ -473,7 +473,7 @@ def add_common_module_definition(ax):
     add_text(
         ax,
         9.0,
-        7.36,
+        21.96,
         "Transformer-Based Historical Sequence Representation Module",
         size=12.0,
         bold=True,
@@ -481,13 +481,13 @@ def add_common_module_definition(ax):
     add_text(
         ax,
         9.0,
-        6.88,
+        21.48,
         r"$\mathcal{F}^{(b)},\quad b\in\{A,Q,D\}$",
         size=10.0,
         bold=True,
     )
 
-    flow_y = 5.63
+    flow_y = 20.23
     embedding_w, embedding_h = 3.30, 1.42
     transformer_w, transformer_h = 2.70, 1.02
     readout_w, readout_h = 3.30, 1.42
@@ -601,20 +601,20 @@ def main():
             "axes.unicode_minus": False,
         }
     )
-    figure, ax = plt.subplots(figsize=(16.5, 18.2), dpi=300)
+    figure, ax = plt.subplots(figsize=(16.5, 17.2), dpi=300)
     figure.patch.set_facecolor("white")
     ax.set_facecolor("white")
     ax.set_xlim(0.2, 17.8)
-    ax.set_ylim(1.55, 22.0)
+    ax.set_ylim(5.55, 22.55)
     ax.axis("off")
 
-    ax.plot([6.0, 6.0], [8.12, 21.72], color=SEPARATOR, linewidth=1.25, linestyle=(0, (4, 5)))
-    ax.plot([12.0, 12.0], [8.12, 21.72], color=SEPARATOR, linewidth=1.25, linestyle=(0, (4, 5)))
+    ax.plot([6.0, 6.0], [5.85, 18.47], color=SEPARATOR, linewidth=1.25, linestyle=(0, (4, 5)))
+    ax.plot([12.0, 12.0], [5.85, 18.47], color=SEPARATOR, linewidth=1.25, linestyle=(0, (4, 5)))
 
+    add_common_module_definition(ax)
     draw_actor_branch(ax, 3.1)
     draw_critic_branch(ax, 9.0)
     draw_discriminator_branch(ax, 14.9)
-    add_common_module_definition(ax)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     figure.savefig(PNG_PATH, dpi=300, bbox_inches="tight", pad_inches=0.04, facecolor="white")
